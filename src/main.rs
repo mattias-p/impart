@@ -39,7 +39,7 @@ fn main() {
     for _ in 0..cli.height {
         let mut x = 0.0;
         for _ in 0..cli.width {
-            data.extend(BREMM.get_pixel(x, y).into_iter());
+            data.extend(BREMM.get_pixel(x, y, (x + y) / 2.0).into_iter());
 
             x += step_x;
         }

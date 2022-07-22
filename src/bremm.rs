@@ -1,3 +1,8 @@
+use palette::convert::FromColorUnclamped;
+use palette::white_point::D65;
+use palette::Lab;
+use palette::Pixel;
+use palette::Srgb;
 use png::Decoder;
 use png::Info;
 
@@ -15,15 +20,20 @@ pub struct Bremm {
 }
 
 impl Bremm {
-    pub fn get_pixel(&self, x: f32, y: f32) -> [u8; 3] {
+    pub fn get_pixel(&self, x: f32, y: f32, z: f32) -> [u8; 3] {
         let x: usize = unsafe { (x * self.max_x + 0.5).to_int_unchecked() };
         let y: usize = unsafe { (y * self.max_y + 0.5).to_int_unchecked() };
         let offset = (y * self.width + x) * 3;
-        [
+        let color: Srgb<f32> = Srgb::new(
             self.buf[offset + 0],
             self.buf[offset + 1],
             self.buf[offset + 2],
-        ]
+        )
+        .into_format();
+        let color = Lab::<D65>::from_color_unclamped(color);
+        let color = color + Lab::new(90.0 * (z - 0.5), 0.0, 0.0);
+        let color = Srgb::from_color_unclamped(color);
+        color.into_format().into_raw()
     }
 
     fn new(bremm_png: &[u8]) -> Self {
