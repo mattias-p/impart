@@ -1,3 +1,8 @@
+//! An lookup-based implementation of the Bremm et al colormap that is extended to allow lightening
+//! and darkening the output color.
+//!
+//! https://www.researchgate.net/publication/272729717_A_survey_and_task-based_quality_assessment_of_static_2D_colormaps
+
 use palette::convert::FromColorUnclamped;
 use palette::white_point::D65;
 use palette::Lab;
@@ -16,21 +21,15 @@ pub struct Bremm {
     pub width: usize,
     pub max_x: f32,
     pub max_y: f32,
-    buf: Vec<u8>,
+    buf: Vec<Lab>,
 }
 
 impl Bremm {
     pub fn get_pixel(&self, x: f32, y: f32, z: f32) -> [u8; 3] {
         let x: usize = unsafe { (x * self.max_x + 0.5).to_int_unchecked() };
         let y: usize = unsafe { (y * self.max_y + 0.5).to_int_unchecked() };
-        let offset = (y * self.width + x) * 3;
-        let color: Srgb<f32> = Srgb::new(
-            self.buf[offset + 0],
-            self.buf[offset + 1],
-            self.buf[offset + 2],
-        )
-        .into_format();
-        let color = Lab::<D65>::from_color_unclamped(color);
+        let offset = y * self.width + x;
+        let color = self.buf[offset];
         let color = color + Lab::new(90.0 * (z - 0.5), 0.0, 0.0);
         let color = Srgb::from_color_unclamped(color);
         color.into_format().into_raw()
@@ -39,15 +38,24 @@ impl Bremm {
     fn new(bremm_png: &[u8]) -> Self {
         let decoder = Decoder::new(bremm_png);
         let mut reader = decoder.read_info().unwrap();
-        let mut buf = vec![0; reader.output_buffer_size()];
-        let info = reader.next_frame(&mut buf).unwrap();
-        buf.truncate(info.buffer_size());
+        let mut rgb = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut rgb).unwrap();
+        rgb.truncate(info.buffer_size());
         let Info { width, height, .. } = reader.info();
+        let lab: Vec<_> = rgb
+            .chunks_exact(3)
+            .map(|components| {
+                let color: Srgb<f32> =
+                    Srgb::new(components[0], components[1], components[2]).into_format();
+                Lab::<D65>::from_color_unclamped(color)
+            })
+            .collect();
+
         Bremm {
             width: *width as usize,
             max_x: (*width - 1) as f32,
             max_y: (*height - 1) as f32,
-            buf,
+            buf: lab,
         }
     }
 }
