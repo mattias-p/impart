@@ -26,6 +26,12 @@ pub struct Bremm {
 
 impl Bremm {
     pub fn get_pixel(&self, x: f32, y: f32, z: f32) -> [u8; 3] {
+        assert!(x >= 0.0);
+        assert!(x <= 1.0);
+        assert!(y >= 0.0);
+        assert!(y <= 1.0);
+        assert!(z >= 0.0);
+        assert!(z <= 1.0);
         let x: usize = unsafe { (x * self.max_x + 0.5).to_int_unchecked() };
         let y: usize = unsafe { (y * self.max_y + 0.5).to_int_unchecked() };
         let offset = y * self.width + x;
