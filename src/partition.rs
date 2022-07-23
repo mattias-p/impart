@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Partition {
     classes: Vec<(f32, f32)>,
     default: f32,
