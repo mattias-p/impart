@@ -3,6 +3,8 @@ mod bremm;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use clap::Parser;
 use noise::Fbm;
@@ -22,7 +24,7 @@ struct Cli {
     #[clap(short, long, default_value_t = 256)]
     height: u16,
 
-    /// Random seed
+    /// Random seed (0 means pseudo-random)
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
 
@@ -37,9 +39,16 @@ fn main() {
     let file = File::create(cli.outfile).unwrap();
     let ref mut w = BufWriter::new(file);
 
-    let elevation = Fbm::new().set_seed(cli.seed);
-    let humidity = Fbm::new().set_seed(cli.seed + 1);
-    let temperature = Fbm::new().set_seed(cli.seed + 2);
+    let seed = if cli.seed == 0 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u32
+    } else {
+        cli.seed
+    };
+    println!("seed: {seed}");
+
+    let elevation = Fbm::new().set_seed(seed);
+    let humidity = Fbm::new().set_seed(seed + 1);
+    let temperature = Fbm::new().set_seed(seed + 2);
 
     let mut data: Vec<u8> = Vec::with_capacity(cli.width as usize * cli.height as usize * 3);
 
