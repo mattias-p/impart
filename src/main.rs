@@ -1,6 +1,7 @@
-mod biome;
 mod bremm;
+mod generate;
 mod partition;
+mod render;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -10,8 +11,8 @@ use std::time::UNIX_EPOCH;
 
 use clap::Parser;
 
-use crate::biome::Generator;
-use crate::biome::Renderer;
+use crate::generate::Generator;
+use crate::render::Renderer;
 use crate::partition::Partition;
 
 #[derive(Parser)]
