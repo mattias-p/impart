@@ -36,7 +36,7 @@ impl Bremm {
         let y: usize = unsafe { (y * self.max_y + 0.5).to_int_unchecked() };
         let offset = y * self.width + x;
         let color = self.buf[offset];
-        let color = color + Lab::new(90.0 * (z - 0.5), 0.0, 0.0);
+        let color = color + Lab::new(80.0 * (z - 0.525), 0.0, 0.0);
         let color = Srgb::from_color_unclamped(color);
         color.into_format().into_raw()
     }

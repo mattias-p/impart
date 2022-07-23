@@ -3,6 +3,7 @@ use noise::NoiseFn;
 use noise::Seedable;
 
 use crate::bremm::BREMM;
+use crate::partition::Partition;
 
 /// A Cell describes geographic location
 pub struct Cell {
@@ -30,8 +31,9 @@ pub fn generate(width: u16, height: u16, seed: u32) -> Vec<Cell> {
         let mut x = 0.0;
         for _ in 0..width {
             let elevation = (0.75 + 0.25 * elevation_noise.get([x, y]) - 0.5 * y) as f32;
-            let humidity = (0.5 - 0.5 * humidity_noise.get([x, y])) as f32;
-            let temperature = (0.5 - 0.5 * temperature_noise.get([x, y])) as f32;
+            let humidity = (0.5 + 0.5 * humidity_noise.get([x, y])) as f32;
+            let temperature = (0.5 + 0.5 * temperature_noise.get([x, y])) as f32;
+
             cells.push(Cell {
                 elevation,
                 humidity,
@@ -42,17 +44,26 @@ pub fn generate(width: u16, height: u16, seed: u32) -> Vec<Cell> {
         }
         y += step_y;
     }
-
     cells
 }
 
-pub fn render(cells: &[Cell]) -> Vec<u8> {
+pub fn render(cells: &[Cell], partition: &Option<Partition>) -> Vec<u8> {
     let mut image: Vec<u8> = Vec::with_capacity(cells.len() * 3);
 
     for cell in cells {
+        let mut humidity = cell.humidity;
+        let mut temperature = cell.temperature;
+        let mut elevation = cell.elevation;
+
+        if let Some(ref partition) = partition {
+            humidity = partition.project(humidity);
+            temperature = partition.project(temperature);
+            elevation = partition.project(elevation);
+        }
+
         image.extend(
             BREMM
-                .get_pixel(cell.humidity, cell.temperature, cell.elevation)
+                .get_pixel(1.0 - humidity, 1.0 - temperature, elevation)
                 .into_iter(),
         );
     }

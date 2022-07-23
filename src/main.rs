@@ -1,5 +1,6 @@
 mod biome;
 mod bremm;
+mod partition;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -11,6 +12,7 @@ use clap::Parser;
 
 use crate::biome::generate;
 use crate::biome::render;
+use crate::partition::Partition;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -48,8 +50,9 @@ fn main() {
     };
     println!("seed: {seed}");
 
+    let partition = Some(Partition::from_boundaries(&[0.375, 0.625]));
     let cells = generate(cli.width, cli.height, seed);
-    let image = render(&cells);
+    let image = render(&cells, &partition);
 
     let mut encoder = png::Encoder::new(w, cli.width as u32, cli.height as u32);
     encoder.set_color(png::ColorType::Rgb);
