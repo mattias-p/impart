@@ -1,3 +1,6 @@
+use std::num::ParseFloatError;
+use std::str::FromStr;
+
 #[derive(Clone)]
 pub struct Partition {
     classes: Vec<(f32, f32)>,
@@ -26,5 +29,17 @@ impl Partition {
             }
         }
         self.default
+    }
+}
+
+impl FromStr for Partition {
+    type Err = ParseFloatError;
+
+    fn from_str(s: &str) -> Result<Self, ParseFloatError> {
+        let mut boundaries = Vec::new();
+        for boundary in s.split(':') {
+            boundaries.push(boundary.parse::<f32>()?);
+        }
+        Ok(Partition::from_boundaries(&boundaries))
     }
 }

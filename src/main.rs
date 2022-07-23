@@ -39,19 +39,15 @@ struct Cli {
 
     /// Elevation partition boundaries (colon-separated list of values between 0.0 and 1.0)
     #[clap(long, default_value = "0.375:0.625")]
-    elevation: String,
+    elevation: Partition,
 
     /// Humidity partition boundaries (colon-separated list of values between 0.0 and 1.0)
     #[clap(long, default_value = "0.375:0.625")]
-    humidity: String,
+    humidity: Partition,
 
     /// Temperature partition boundaries (colon-separated list of values between 0.0 and 1.0)
     #[clap(long, default_value = "0.375:0.625")]
-    temperature: String,
-}
-
-fn parse_boundaries(s: &str) -> Vec<f32> {
-    s.split(":").map(|b| b.parse::<f32>().unwrap()).collect()
+    temperature: Partition,
 }
 
 fn main() {
@@ -60,14 +56,10 @@ fn main() {
     let file = File::create(cli.outfile).unwrap();
     let ref mut w = BufWriter::new(file);
 
-    let elevation_boundaries = parse_boundaries(&cli.elevation);
-    let humidity_boundaries = parse_boundaries(&cli.humidity);
-    let temperature_boundaries = parse_boundaries(&cli.temperature);
-
     let renderer = Renderer::new()
-        .elevation_partition(Some(Partition::from_boundaries(&elevation_boundaries)))
-        .humidity_partition(Some(Partition::from_boundaries(&humidity_boundaries)))
-        .temperature_partition(Some(Partition::from_boundaries(&temperature_boundaries)));
+        .elevation_partition(Some(cli.elevation.clone()))
+        .humidity_partition(Some(cli.humidity.clone()))
+        .temperature_partition(Some(cli.temperature.clone()));
 
     let generator = Generator::new().slope(cli.slope);
 
