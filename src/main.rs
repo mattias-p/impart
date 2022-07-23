@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 
 use clap::Parser;
 
-use crate::biome::generate;
+use crate::biome::Generator;
 use crate::biome::Renderer;
 use crate::partition::Partition;
 
@@ -32,6 +32,10 @@ struct Cli {
     /// Random seed (0 means pseudo-random)
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
+
+    /// How much elevation is affected by position in y-axis
+    #[clap(long, default_value_t = 0.5)]
+    slope: f64,
 
     /// Elevation partition boundaries (colon-separated list of values between 0.0 and 1.0)
     #[clap(long, default_value = "0.375:0.625")]
@@ -59,10 +63,13 @@ fn main() {
     let elevation_boundaries = parse_boundaries(&cli.elevation);
     let humidity_boundaries = parse_boundaries(&cli.humidity);
     let temperature_boundaries = parse_boundaries(&cli.temperature);
+
     let renderer = Renderer::new()
         .elevation_partition(Some(Partition::from_boundaries(&elevation_boundaries)))
         .humidity_partition(Some(Partition::from_boundaries(&humidity_boundaries)))
         .temperature_partition(Some(Partition::from_boundaries(&temperature_boundaries)));
+
+    let generator = Generator::new().slope(cli.slope);
 
     let seed = if cli.seed == 0 {
         SystemTime::now()
@@ -74,7 +81,7 @@ fn main() {
     };
     println!("seed: {seed}");
 
-    let cells = generate(cli.width, cli.height, seed);
+    let cells = generator.generate(cli.width, cli.height, seed);
     let image = renderer.render(&cells);
 
     let mut encoder = png::Encoder::new(w, cli.width as u32, cli.height as u32);
