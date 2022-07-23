@@ -106,7 +106,7 @@ impl Renderer {
 
             image.extend(
                 BREMM
-                    .get_pixel(1.0 - humidity, 1.0 - temperature, elevation)
+                    .get_pixel(humidity, temperature, elevation)
                     .into_iter(),
             );
         }
