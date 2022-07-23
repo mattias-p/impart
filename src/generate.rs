@@ -1,4 +1,5 @@
 use noise::Fbm;
+use noise::MultiFractal;
 use noise::NoiseFn;
 use noise::Seedable;
 
@@ -16,22 +17,78 @@ pub struct Cell {
 
 pub struct Generator {
     slope: f64,
+    elevation_octaves: usize,
+    elevation_frequency: f64,
+    elevation_persistence: f64,
+    climate_octaves: usize,
+    climate_frequency: f64,
+    climate_persistence: f64,
 }
 
 impl Generator {
     pub fn new() -> Self {
-        Generator { slope: 0.5 }
+        Generator {
+            slope: 0.5,
+            elevation_octaves: Fbm::DEFAULT_OCTAVE_COUNT,
+            elevation_frequency: Fbm::DEFAULT_FREQUENCY,
+            elevation_persistence: Fbm::DEFAULT_PERSISTENCE,
+            climate_octaves: Fbm::DEFAULT_OCTAVE_COUNT,
+            climate_frequency: Fbm::DEFAULT_FREQUENCY,
+            climate_persistence: Fbm::DEFAULT_PERSISTENCE,
+        }
     }
 
-    pub fn slope(mut self, value: f64) -> Self {
+    pub fn set_slope(mut self, value: f64) -> Self {
         self.slope = value;
         self
     }
 
+    pub fn set_elevation_octaves(mut self, value: usize) -> Self {
+        self.elevation_octaves = value;
+        self
+    }
+
+    pub fn set_elevation_frequency(mut self, value: f64) -> Self {
+        self.elevation_frequency = value;
+        self
+    }
+
+    pub fn set_elevation_persistence(mut self, value: f64) -> Self {
+        self.elevation_persistence = value;
+        self
+    }
+
+    pub fn set_climate_octaves(mut self, value: usize) -> Self {
+        self.climate_octaves = value;
+        self
+    }
+
+    pub fn set_climate_frequency(mut self, value: f64) -> Self {
+        self.climate_frequency = value;
+        self
+    }
+
+    pub fn set_climate_persistence(mut self, value: f64) -> Self {
+        self.climate_persistence = value;
+        self
+    }
+
     pub fn generate(&self, width: u16, height: u16, seed: u32) -> Vec<Cell> {
-        let elevation_noise = Fbm::new().set_seed(seed + 0);
-        let humidity_noise = Fbm::new().set_seed(seed + 1);
-        let temperature_noise = Fbm::new().set_seed(seed + 2);
+        let elevation_noise = Fbm::new()
+            .set_seed(seed + 0)
+            .set_octaves(self.elevation_octaves)
+            .set_frequency(self.elevation_frequency)
+            .set_persistence(self.elevation_persistence);
+        let humidity_noise = Fbm::new()
+            .set_seed(seed + 1)
+            .set_octaves(self.climate_octaves)
+            .set_frequency(self.climate_frequency)
+            .set_persistence(self.climate_persistence);
+        let temperature_noise = Fbm::new()
+            .set_seed(seed + 2)
+            .set_octaves(self.climate_octaves)
+            .set_frequency(self.climate_frequency)
+            .set_persistence(self.climate_persistence);
 
         let mut cells = Vec::with_capacity(width as usize * height as usize);
 
