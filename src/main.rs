@@ -1,5 +1,6 @@
 mod expr;
 mod generate;
+mod lexer;
 mod render;
 
 use std::fs::File;
@@ -13,8 +14,8 @@ use clap::Parser;
 use noise::Fbm;
 
 use crate::expr::Expr;
-use crate::expr::Lexer;
 use crate::generate::Generator;
+use crate::lexer::Lexer;
 use crate::render::Renderer;
 
 #[derive(Parser)]
