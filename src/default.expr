@@ -3,7 +3,7 @@ case elevation < 0.375
     case temperature < 0.375
         case humidity < 0.375  "mediumblue"
         case humidity < 0.625  "darkcyan"
-        default                "darkgreen"
+        default                "darkolivegreen"
 
     case temperature < 0.625
         case humidity < 0.375  "rebeccapurple"
@@ -24,18 +24,18 @@ case elevation < 0.625
 
     case temperature < 0.625
         case humidity < 0.375  "mediumpurple"
-        case humidity < 0.625  "silver"
+        case humidity < 0.625  "darkgrey"
         default                "goldenrod"
 
     default
-        case humidity < 0.375  "slateblue"
-        case humidity < 0.625  "mediumorchid"
+        case humidity < 0.375  "mediumorchid"
+        case humidity < 0.625  "palevioletred"
         default                "indianred"
 
 default
 
     case temperature < 0.375
-        case humidity < 0.375  "lightskyblue"
+        case humidity < 0.375  "lightcyan"
         case humidity < 0.625  "paleturquoise"
         default                "palegreen"
 
