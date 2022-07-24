@@ -1,7 +1,5 @@
-mod bremm;
 mod expr;
 mod generate;
-mod partition;
 mod render;
 
 use std::fs::File;
@@ -9,13 +7,15 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use std::io::Read;
 
 use clap::Parser;
 use noise::Fbm;
 
 use crate::generate::Generator;
-use crate::partition::Partition;
 use crate::render::Renderer;
+use crate::expr::Lexer;
+use crate::expr::Expr;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -23,6 +23,10 @@ struct Cli {
     /// Output file
     #[clap(short, long, default_value = "out.png")]
     outfile: PathBuf,
+
+    /// Expression file
+    #[clap(short, long)]
+    exprfile: Option<PathBuf>,
 
     /// Width in modules (x-coordinates)
     #[clap(short, long, default_value_t = 256)]
@@ -39,18 +43,6 @@ struct Cli {
     /// Fraction of elevation taken from y-coordinate
     #[clap(long, default_value_t = 0.475)]
     slope: f64,
-
-    /// Elevation partition boundaries (colon-separated list of values between 0.0 and 1.0)
-    #[clap(long, default_value = "0.375:0.625")]
-    elevation_partition: Partition,
-
-    /// Humidity partition boundaries (colon-separated list of values between 0.0 and 1.0)
-    #[clap(long, default_value = "0.375:0.625")]
-    humidity_partition: Partition,
-
-    /// Temperature partition boundaries (colon-separated list of values between 0.0 and 1.0)
-    #[clap(long, default_value = "0.375:0.625")]
-    temperature_partition: Partition,
 
     /// Elevation noise octave count
     #[clap(long, default_value_t = Fbm::DEFAULT_OCTAVE_COUNT)]
@@ -83,10 +75,18 @@ fn main() {
     let file = File::create(cli.outfile).unwrap();
     let ref mut w = BufWriter::new(file);
 
-    let renderer = Renderer::new()
-        .elevation_partition(Some(cli.elevation_partition.clone()))
-        .humidity_partition(Some(cli.humidity_partition.clone()))
-        .temperature_partition(Some(cli.temperature_partition.clone()));
+    let mut buffer = Vec::new();
+    let expr = if let Some(exprfile) = cli.exprfile {
+        let mut f = File::open(exprfile).unwrap();
+        f.read_to_end(&mut buffer).unwrap();
+        buffer.as_slice()
+    } else {
+        include_bytes!("default.expr")
+    };
+    let mut lexer = Lexer::new(expr);
+    let expr = Expr::parse(&mut lexer).unwrap();
+
+    let renderer = Renderer::new(expr);
 
     let generator = Generator::new()
         .set_slope(cli.slope)

@@ -1,4 +1,5 @@
 use palette::named;
+use palette::Srgb;
 
 use crate::generate::Cell;
 
@@ -14,13 +15,26 @@ pub enum Token {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Color(String);
+pub struct Color {
+    name: String,
+    color: Srgb<u8>,
+
+}
+
+impl Color {
+    pub fn color(&self) -> Srgb<u8> {
+        self.color
+    }
+}
 
 impl TryFrom<&str> for Color {
     type Error = &'static str;
     fn try_from(name: &str) -> Result<Self, Self::Error> {
         match named::from_str(&name) {
-            Some(_) => Ok(Color(name.to_string())),
+            Some(color) => Ok(Color {
+                name: name.to_string(),
+                color,
+            }),
             None => Err("unrecognized color name"),
         }
     }
@@ -55,8 +69,10 @@ impl<'a> Lexer<'a> {
 impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
     fn next(&mut self) -> Option<Self::Item> {
+        #[derive(PartialEq)]
         enum State {
             Start,
+            Keyword,
             Number,
             Quote,
             EndQuote,
@@ -69,12 +85,19 @@ impl<'a> Iterator for Lexer<'a> {
         while let Some(ch) = self.corpus.get(pos) {
             pos += 1;
             match (&state, *ch) {
-                (State::Start | State::Number | State::EndQuote, b'\n') => {
+                (State::Start, b'\n') => {
+                    new_line = true;
+                    break;
+                }
+                (State::Keyword | State::Number | State::EndQuote, b'\n') => {
                     white_space = 1;
                     new_line = true;
                     break;
                 }
-                (State::Start | State::Number | State::EndQuote, b' ') => {
+                (State::Start, b' ') => {
+                    break;
+                }
+                (State::Keyword | State::Number | State::EndQuote, b' ') => {
                     white_space = 1;
                     break;
                 }
@@ -87,11 +110,13 @@ impl<'a> Iterator for Lexer<'a> {
                 (State::Quote, b'"') => {
                     state = State::EndQuote;
                 }
-                (State::Start | State::Number, digit) if (b'0'..=b'9').contains(&digit) => {
+                (State::Start | State::Number, b'0'..=b'9' | b'.') => {
                     state = State::Number;
                 }
-                (State::Number, b'.') => {}
-                (State::Start | State::Quote, _) => {}
+                (State::Start, _) => {
+                    state = State::Keyword;
+                }
+                (State::Quote | State::Keyword, _) => {}
                 (State::Number | State::EndQuote, ch) => {
                     return Some(Token::Error(
                         self.error(&format!("unexpected character '{ch}'")),
@@ -99,7 +124,12 @@ impl<'a> Iterator for Lexer<'a> {
                 }
             }
         }
-        if pos == self.pos {
+        if state == State::Start {
+            self.pos = pos;
+            if new_line {
+                self.line_no += 1;
+                self.line_start = pos;
+            }
             return None;
         }
         let s = &self.corpus[self.pos..pos - white_space];
@@ -118,21 +148,21 @@ impl<'a> Iterator for Lexer<'a> {
                 Ok(number) => Token::Number(number),
                 Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
             },
-            (State::Start, b">") => Token::Comparator(Comparator::GreaterThan),
-            (State::Start, b"<") => Token::Comparator(Comparator::LessThan),
-            (State::Start, b"case") => Token::Case,
-            (State::Start, b"default") => Token::Default,
-            (State::Start, b"humidity") => Token::Variable(Variable::Humidity),
-            (State::Start, b"elevation") => Token::Variable(Variable::Elevation),
-            (State::Start, b"temperature") => Token::Variable(Variable::Temperature),
-            (State::Start, token) => {
+            (State::Keyword, b">") => Token::Comparator(Comparator::GreaterThan),
+            (State::Keyword, b"<") => Token::Comparator(Comparator::LessThan),
+            (State::Keyword, b"case") => Token::Case,
+            (State::Keyword, b"default") => Token::Default,
+            (State::Keyword, b"humidity") => Token::Variable(Variable::Humidity),
+            (State::Keyword, b"elevation") => Token::Variable(Variable::Elevation),
+            (State::Keyword, b"temperature") => Token::Variable(Variable::Temperature),
+            (State::Keyword, token) => {
                 let message = match std::str::from_utf8(token) {
                     Ok(token) => format!("invalid token '{token}'"),
                     Err(_) => format!("invalid token '{token:?}'"),
                 };
                 return Some(Token::Error(self.error(&message)));
             }
-            (State::Quote, _) => unreachable!(),
+            (State::Start | State::Quote, _) => unreachable!(),
         };
         self.pos = pos;
         if new_line {
@@ -215,13 +245,18 @@ impl Case {
         let cond = Cond::parse(lexer)?;
         let yes = Box::new(Expr::parse_inner(lexer)?);
         match lexer.next() {
-            Some(Token::Default) => {}
+            Some(Token::Default) => {
+                let no = Box::new(Expr::parse_inner(lexer)?);
+                Ok(Case { cond, yes, no })
+            }
+            Some(Token::Case) => {
+                let no = Box::new(Expr::Case(Case::parse(lexer)?));
+                Ok(Case { cond, yes, no })
+            }
             Some(Token::Error(error)) => Err(error)?,
             Some(token) => Err(lexer.error(&format!("expected token 'default' got {token:?}")))?,
             None => Err(lexer.error("unexpected EOF"))?,
-        };
-        let no = Box::new(Expr::parse_inner(lexer)?);
-        Ok(Case { cond, yes, no })
+        }
     }
 
     fn eval(&self, cell: Cell) -> Color {
@@ -319,6 +354,26 @@ mod tests {
                     no: Box::new(Expr::Color("rosybrown".try_into().unwrap())),
                 })),
                 no: Box::new(Expr::Color("cyan".try_into().unwrap())),
+            }))
+        );
+        assert_eq!(
+            check(br#"case elevation < 0.5 "cyan" case humidity < 0.31 "sandybrown" default "rosybrown""#),
+            Ok(Expr::Case(Case {
+                cond: Cond {
+                    variable: Variable::Elevation,
+                    comparator: Comparator::LessThan,
+                    number: 0.5,
+                },
+                yes: Box::new(Expr::Color("cyan".try_into().unwrap())),
+                no: Box::new(Expr::Case(Case {
+                    cond: Cond {
+                        variable: Variable::Humidity,
+                        comparator: Comparator::LessThan,
+                        number: 0.31,
+                    },
+                    yes: Box::new(Expr::Color("sandybrown".try_into().unwrap())),
+                    no: Box::new(Expr::Color("rosybrown".try_into().unwrap())),
+                })),
             }))
         );
     }
