@@ -1,36 +1,36 @@
 case elevation < 0.375
 
     case temperature < 0.375
-        case humidity < 0.375  "royalblue"
-        case humidity < 0.625  "teal"
-        default                "seagreen"
+        case humidity < 0.375  "mediumblue"
+        case humidity < 0.625  "darkcyan"
+        default                "darkgreen"
 
     case temperature < 0.625
-        case humidity < 0.375  "mediumpurple"
-        case humidity < 0.625  "grey"
-        default                "goldenrod"
+        case humidity < 0.375  "rebeccapurple"
+        case humidity < 0.625  "dimgrey"
+        default                "saddlebrown"
 
     default
         case humidity < 0.375  "darkviolet"
-        case humidity < 0.625  "darksalmon"
-        default                "crimson"
+        case humidity < 0.625  "purple"
+        default                "darkred"
 
 case elevation < 0.625
 
     case temperature < 0.375
         case humidity < 0.375  "deepskyblue"
-        case humidity < 0.625  "turquoise"
+        case humidity < 0.625  "mediumturquoise"
         default                "yellowgreen"
 
     case temperature < 0.625
-        case humidity < 0.375  "thistle"
-        case humidity < 0.625  "lightslategrey"
-        default                "yellow"
+        case humidity < 0.375  "mediumpurple"
+        case humidity < 0.625  "silver"
+        default                "goldenrod"
 
     default
-        case humidity < 0.375  "violet"
-        case humidity < 0.625  "salmon"
-        default                "tomato"
+        case humidity < 0.375  "slateblue"
+        case humidity < 0.625  "mediumorchid"
+        default                "indianred"
 
 default
 
@@ -41,10 +41,10 @@ default
 
     case temperature < 0.625
         case humidity < 0.375  "lavender"
-        case humidity < 0.625  "lightgrey"
+        case humidity < 0.625  "gainsboro"
         default                "lemonchiffon"
 
     default
         case humidity < 0.375  "plum"
         case humidity < 0.625  "pink"
-        default                "lightsalmon"
+        default                "navajowhite"
