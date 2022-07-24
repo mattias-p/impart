@@ -4,6 +4,7 @@ use noise::NoiseFn;
 use noise::Seedable;
 
 /// A Cell describes geographic location
+#[derive(Clone, Copy)]
 pub struct Cell {
     /// Elevation in the range 0.0 - 1.0 inclusive
     pub elevation: f32,
