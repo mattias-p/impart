@@ -7,7 +7,7 @@ use crate::generate::Cell;
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Case,
-    Default,
+    Else,
     Variable(Variable),
     Comparator(Comparator),
     Quoted(String),
@@ -105,7 +105,7 @@ impl<'a> Iterator for Lexer<'a> {
                     b">" => Token::Comparator(Comparator::GreaterThan),
                     b"<" => Token::Comparator(Comparator::LessThan),
                     b"case" => Token::Case,
-                    b"default" => Token::Default,
+                    b"else" => Token::Else,
                     b"humidity" => Token::Variable(Variable::Humidity),
                     b"elevation" => Token::Variable(Variable::Elevation),
                     b"temperature" => Token::Variable(Variable::Temperature),
@@ -238,7 +238,7 @@ impl Case {
             .next()
             .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
         {
-            Token::Default => {
+            Token::Else => {
                 let no = Box::new(Expr::parse_inner(lexer)?);
                 Ok(Case { cond, yes, no })
             }
@@ -246,7 +246,7 @@ impl Case {
                 let no = Box::new(Expr::Case(Case::parse(lexer)?));
                 Ok(Case { cond, yes, no })
             }
-            token => Err(lexer.error(&format!("expected token 'default' got {token:?}")))?,
+            token => Err(lexer.error(&format!("expected 'else' got {token:?}")))?,
         }
     }
 
@@ -318,7 +318,7 @@ mod tests {
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
-            check(br#"case elevation > 0.5 "brown" default "cyan""#),
+            check(br#"case elevation > 0.5 "brown" else "cyan""#),
             Ok(Expr::Case(Case {
                 cond: Cond {
                     variable: Variable::Elevation,
@@ -338,7 +338,7 @@ mod tests {
             Err("invalid keyword 'xelevation' at 2:1".to_string())
         );
         assert_eq!(
-            check(br#"case elevation > 0.5 case humidity < 0.31 "sandybrown" default "rosybrown" default "cyan""#),
+            check(br#"case elevation > 0.5 case humidity < 0.31 "sandybrown" else "rosybrown" else "cyan""#),
             Ok(Expr::Case(Case {
                 cond: Cond {
                     variable: Variable::Elevation,
@@ -358,7 +358,7 @@ mod tests {
             }))
         );
         assert_eq!(
-            check(br#"case elevation < 0.5 "cyan" case humidity < 0.31 "sandybrown" default "rosybrown""#),
+            check(br#"case elevation < 0.5 "cyan" case humidity < 0.31 "sandybrown" else "rosybrown""#),
             Ok(Expr::Case(Case {
                 cond: Cond {
                     variable: Variable::Elevation,

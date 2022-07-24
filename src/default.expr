@@ -3,48 +3,48 @@ case elevation < 0.375
     case temperature < 0.375
         case humidity < 0.375  "mediumblue"
         case humidity < 0.625  "darkcyan"
-        default                "darkolivegreen"
+        else                   "darkolivegreen"
 
     case temperature < 0.625
         case humidity < 0.375  "rebeccapurple"
         case humidity < 0.625  "dimgrey"
-        default                "saddlebrown"
+        else                   "saddlebrown"
 
-    default
+    else
         case humidity < 0.375  "darkviolet"
         case humidity < 0.625  "purple"
-        default                "darkred"
+        else                   "darkred"
 
 case elevation < 0.625
 
     case temperature < 0.375
         case humidity < 0.375  "deepskyblue"
         case humidity < 0.625  "mediumturquoise"
-        default                "yellowgreen"
+        else                   "yellowgreen"
 
     case temperature < 0.625
         case humidity < 0.375  "mediumpurple"
         case humidity < 0.625  "darkgrey"
-        default                "goldenrod"
+        else                   "goldenrod"
 
-    default
+    else
         case humidity < 0.375  "mediumorchid"
         case humidity < 0.625  "palevioletred"
-        default                "indianred"
+        else                   "indianred"
 
-default
+else
 
     case temperature < 0.375
         case humidity < 0.375  "lightcyan"
         case humidity < 0.625  "paleturquoise"
-        default                "palegreen"
+        else                   "palegreen"
 
     case temperature < 0.625
         case humidity < 0.375  "lavender"
         case humidity < 0.625  "gainsboro"
-        default                "lemonchiffon"
+        else                   "lemonchiffon"
 
-    default
+    else
         case humidity < 0.375  "plum"
         case humidity < 0.625  "pink"
-        default                "navajowhite"
+        else                   "navajowhite"
