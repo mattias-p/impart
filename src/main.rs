@@ -4,18 +4,18 @@ mod render;
 
 use std::fs::File;
 use std::io::BufWriter;
+use std::io::Read;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use std::io::Read;
 
 use clap::Parser;
 use noise::Fbm;
 
+use crate::expr::Expr;
+use crate::expr::Lexer;
 use crate::generate::Generator;
 use crate::render::Renderer;
-use crate::expr::Lexer;
-use crate::expr::Expr;
 
 #[derive(Parser)]
 #[clap(version, about)]

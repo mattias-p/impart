@@ -1,7 +1,7 @@
 use palette::Pixel;
 
-use crate::generate::Cell;
 use crate::expr::Expr;
+use crate::generate::Cell;
 
 pub struct Renderer {
     expr: Expr,
@@ -9,9 +9,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(expr: Expr) -> Self {
-        Renderer {
-            expr,
-        }
+        Renderer { expr }
     }
 
     pub fn render(&self, cells: &[Cell]) -> Vec<u8> {
@@ -20,7 +18,7 @@ impl Renderer {
         for cell in cells {
             let color = self.expr.eval(*cell);
 
-            image.extend( color.color().into_raw::<[u8; 3]>().into_iter() );
+            image.extend(color.color().into_raw::<[u8; 3]>().into_iter());
         }
 
         image

@@ -18,7 +18,6 @@ pub enum Token {
 pub struct Color {
     name: String,
     color: Srgb<u8>,
-
 }
 
 impl Color {
@@ -74,69 +73,59 @@ impl<'a> Iterator for Lexer<'a> {
             Start,
             Keyword(usize),
             Number(usize),
-            Quote(usize),
-            EndQuote(usize, usize),
+            Quote,
+            EndQuote(usize),
         }
 
         let mut pos = self.pos;
         let mut state = State::Start;
-        let mut new_lines = 0;
-        let mut line_start = self.line_start;
-        let mut white_space = 0;
+        let mut new_line = false;
         while let Some(ch) = self.corpus.get(pos) {
-            match (&state, *ch) {
+            state = match (&state, *ch) {
                 (State::Start, b'\n') => {
-                    new_lines += 1;
-                    line_start = pos;
+                    self.pos += 1;
+                    self.line_no += 1;
+                    self.line_start = self.pos;
+                    State::Start
                 }
-                (State::Start, b' ') => {}
-                (State::Start, b'"') => {
-                    state = State::Quote(pos + 1);
+                (State::Start, b' ') => {
+                    self.pos += 1;
+                    State::Start
                 }
-                (State::Start, b'0'..=b'9' | b'.') => {
-                    state = State::Number(pos);
-                }
-                (State::Start, _) => {
-                    state = State::Keyword(pos);
-                }
-                (State::Keyword(_) | State::Number(_) | State::EndQuote(_, _), b'\n') => {
+                (State::Start, b'"') => State::Quote,
+                (State::Start, b'0'..=b'9' | b'.') => State::Number(pos),
+                (State::Start, _) => State::Keyword(pos),
+                (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b'\n') => {
                     pos += 1;
-                    white_space = 1;
-                    new_lines += 1;
-                    line_start = pos;
+                    new_line = true;
                     break;
                 }
-                (State::Quote(_), b'\n') => {
+                (State::Quote, b'\n') => {
                     return Some(Token::Error(self.error("unexpected EOL")));
                 }
-                (State::Keyword(_) | State::Number(_) | State::EndQuote(_, _), b' ') => {
+                (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b' ') => {
                     pos += 1;
-                    white_space = 1;
                     break;
                 }
-                (State::Quote(start), b'"') => {
-                    state = State::EndQuote(*start, pos);
-                }
-                (State::Number(_), b'0'..=b'9' | b'.') => {}
-                (State::Number(_) | State::EndQuote(_, _), ch) => {
+                (State::Quote, b'"') => State::EndQuote(pos),
+                (State::Number(_), b'0'..=b'9' | b'.') => State::Number(pos),
+                (State::Number(_) | State::EndQuote(_), ch) => {
                     return Some(Token::Error(
                         self.error(&format!("unexpected character '{ch}'")),
                     ));
                 }
-                (State::Quote(_) | State::Keyword(_), _) => {}
-            }
+                (State::Keyword(_), _) => State::Keyword(pos),
+                (State::Quote, _) => State::Quote,
+            };
             pos += 1;
         }
 
         let token = match state {
             State::Start => {
-                self.pos = pos;
-                self.line_no += new_lines;
-                self.line_start = line_start;
                 return None;
             }
-            State::Keyword(start) => {
-                let s = &self.corpus[start..pos - white_space];
+            State::Keyword(end) => {
+                let s = &self.corpus[self.pos..=end];
                 match s {
                     b">" => Token::Comparator(Comparator::GreaterThan),
                     b"<" => Token::Comparator(Comparator::LessThan),
@@ -147,35 +136,35 @@ impl<'a> Iterator for Lexer<'a> {
                     b"temperature" => Token::Variable(Variable::Temperature),
                     token => {
                         let message = match std::str::from_utf8(token) {
-                            Ok(token) => format!("invalid token '{token}'"),
-                            Err(_) => format!("invalid token '{token:?}'"),
+                            Ok(token) => format!("invalid keyword '{token}'"),
+                            Err(_) => format!("invalid keyword '{token:?}'"),
                         };
                         return Some(Token::Error(self.error(&message)));
                     }
                 }
             }
-            State::Number(start) => {
-                let number = &self.corpus[start..pos - white_space];
+            State::Number(end) => {
+                let number = &self.corpus[self.pos..=end];
                 match std::str::from_utf8(number).unwrap().parse::<f32>() {
                     Ok(number) => Token::Number(number),
                     Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
                 }
             }
-            State::EndQuote(start, end) => {
-                match std::str::from_utf8(&self.corpus[start..end]) {
-                    Ok(name) => match Color::try_from(name) {
-                        Ok(color) => Token::Color(color),
-                        Err(err) => Token::Error(self.error(&format!("{} '{}'", err, name))),
-                    }
-                    Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
-                }
-            }
-            State::Quote(_) => unreachable!(),
+            State::EndQuote(end) => match std::str::from_utf8(&self.corpus[(self.pos + 1)..end]) {
+                Ok(name) => match Color::try_from(name) {
+                    Ok(color) => Token::Color(color),
+                    Err(err) => Token::Error(self.error(&format!("{} '{}'", err, name))),
+                },
+                Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
+            },
+            State::Quote => unreachable!(),
         };
 
         self.pos = pos;
-        self.line_no += new_lines;
-        self.line_start = line_start;
+        if new_line {
+            self.line_no += 1;
+            self.line_start = pos;
+        }
         Some(token)
     }
 }
@@ -231,7 +220,7 @@ impl Cond {
         let number = match self.variable {
             Variable::Elevation => cell.elevation,
             Variable::Temperature => cell.temperature,
-            Variable::Humidity=> cell.humidity,
+            Variable::Humidity => cell.humidity,
         };
         match self.comparator {
             Comparator::GreaterThan => number > self.number,
@@ -322,7 +311,11 @@ mod tests {
 
     #[test]
     fn parse() {
-        assert_eq!(check(br#""brown""#), Ok(Expr::Color("brown".try_into().unwrap())));
+        //assert_eq!(check(br#""brown""#), Ok(Expr::Color("brown".try_into().unwrap())));
+        assert_eq!(
+            check(br#" "brown""#),
+            Ok(Expr::Color("brown".try_into().unwrap()))
+        );
         assert_eq!(
             check(br#"case elevation > 0.5 "brown" default "cyan""#),
             Ok(Expr::Case(Case {
@@ -337,11 +330,11 @@ mod tests {
         );
         assert_eq!(
             check(b"case xelevation"),
-            Err("invalid token 'xelevation' at 1:6".to_string())
+            Err("invalid keyword 'xelevation' at 1:6".to_string())
         );
         assert_eq!(
             check(b"case\nxelevation"),
-            Err("invalid token 'xelevation' at 2:1".to_string())
+            Err("invalid keyword 'xelevation' at 2:1".to_string())
         );
         assert_eq!(
             check(br#"case elevation > 0.5 case humidity < 0.31 "sandybrown" default "rosybrown" default "cyan""#),
