@@ -72,103 +72,110 @@ impl<'a> Iterator for Lexer<'a> {
         #[derive(PartialEq)]
         enum State {
             Start,
-            Keyword,
-            Number,
-            Quote,
-            EndQuote,
+            Keyword(usize),
+            Number(usize),
+            Quote(usize),
+            EndQuote(usize, usize),
         }
 
         let mut pos = self.pos;
         let mut state = State::Start;
-        let mut new_line = false;
+        let mut new_lines = 0;
+        let mut line_start = self.line_start;
         let mut white_space = 0;
         while let Some(ch) = self.corpus.get(pos) {
-            pos += 1;
             match (&state, *ch) {
                 (State::Start, b'\n') => {
-                    new_line = true;
-                    break;
+                    new_lines += 1;
+                    line_start = pos;
                 }
-                (State::Keyword | State::Number | State::EndQuote, b'\n') => {
-                    white_space = 1;
-                    new_line = true;
-                    break;
-                }
-                (State::Start, b' ') => {
-                    break;
-                }
-                (State::Keyword | State::Number | State::EndQuote, b' ') => {
-                    white_space = 1;
-                    break;
-                }
-                (State::Quote, b'\n') => {
-                    return Some(Token::Error(self.error("unexpected EOL")));
-                }
+                (State::Start, b' ') => {}
                 (State::Start, b'"') => {
-                    state = State::Quote;
+                    state = State::Quote(pos + 1);
                 }
-                (State::Quote, b'"') => {
-                    state = State::EndQuote;
-                }
-                (State::Start | State::Number, b'0'..=b'9' | b'.') => {
-                    state = State::Number;
+                (State::Start, b'0'..=b'9' | b'.') => {
+                    state = State::Number(pos);
                 }
                 (State::Start, _) => {
-                    state = State::Keyword;
+                    state = State::Keyword(pos);
                 }
-                (State::Quote | State::Keyword, _) => {}
-                (State::Number | State::EndQuote, ch) => {
+                (State::Keyword(_) | State::Number(_) | State::EndQuote(_, _), b'\n') => {
+                    pos += 1;
+                    white_space = 1;
+                    new_lines += 1;
+                    line_start = pos;
+                    break;
+                }
+                (State::Quote(_), b'\n') => {
+                    return Some(Token::Error(self.error("unexpected EOL")));
+                }
+                (State::Keyword(_) | State::Number(_) | State::EndQuote(_, _), b' ') => {
+                    pos += 1;
+                    white_space = 1;
+                    break;
+                }
+                (State::Quote(start), b'"') => {
+                    state = State::EndQuote(*start, pos);
+                }
+                (State::Number(_), b'0'..=b'9' | b'.') => {}
+                (State::Number(_) | State::EndQuote(_, _), ch) => {
                     return Some(Token::Error(
                         self.error(&format!("unexpected character '{ch}'")),
                     ));
                 }
+                (State::Quote(_) | State::Keyword(_), _) => {}
             }
+            pos += 1;
         }
-        if state == State::Start {
-            self.pos = pos;
-            if new_line {
-                self.line_no += 1;
-                self.line_start = pos;
-            }
-            return None;
-        }
-        let s = &self.corpus[self.pos..pos - white_space];
 
-        let token = match (state, s) {
-            (State::EndQuote, quoted) => {
-                match std::str::from_utf8(&quoted[1..(pos - self.pos - white_space - 1)]) {
+        let token = match state {
+            State::Start => {
+                self.pos = pos;
+                self.line_no += new_lines;
+                self.line_start = line_start;
+                return None;
+            }
+            State::Keyword(start) => {
+                let s = &self.corpus[start..pos - white_space];
+                match s {
+                    b">" => Token::Comparator(Comparator::GreaterThan),
+                    b"<" => Token::Comparator(Comparator::LessThan),
+                    b"case" => Token::Case,
+                    b"default" => Token::Default,
+                    b"humidity" => Token::Variable(Variable::Humidity),
+                    b"elevation" => Token::Variable(Variable::Elevation),
+                    b"temperature" => Token::Variable(Variable::Temperature),
+                    token => {
+                        let message = match std::str::from_utf8(token) {
+                            Ok(token) => format!("invalid token '{token}'"),
+                            Err(_) => format!("invalid token '{token:?}'"),
+                        };
+                        return Some(Token::Error(self.error(&message)));
+                    }
+                }
+            }
+            State::Number(start) => {
+                let number = &self.corpus[start..pos - white_space];
+                match std::str::from_utf8(number).unwrap().parse::<f32>() {
+                    Ok(number) => Token::Number(number),
+                    Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
+                }
+            }
+            State::EndQuote(start, end) => {
+                match std::str::from_utf8(&self.corpus[start..end]) {
                     Ok(name) => match Color::try_from(name) {
                         Ok(color) => Token::Color(color),
-                        Err(err) => Token::Error(self.error(err)),
+                        Err(err) => Token::Error(self.error(&format!("{} '{}'", err, name))),
                     }
                     Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
                 }
             }
-            (State::Number, number) => match std::str::from_utf8(number).unwrap().parse::<f32>() {
-                Ok(number) => Token::Number(number),
-                Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
-            },
-            (State::Keyword, b">") => Token::Comparator(Comparator::GreaterThan),
-            (State::Keyword, b"<") => Token::Comparator(Comparator::LessThan),
-            (State::Keyword, b"case") => Token::Case,
-            (State::Keyword, b"default") => Token::Default,
-            (State::Keyword, b"humidity") => Token::Variable(Variable::Humidity),
-            (State::Keyword, b"elevation") => Token::Variable(Variable::Elevation),
-            (State::Keyword, b"temperature") => Token::Variable(Variable::Temperature),
-            (State::Keyword, token) => {
-                let message = match std::str::from_utf8(token) {
-                    Ok(token) => format!("invalid token '{token}'"),
-                    Err(_) => format!("invalid token '{token:?}'"),
-                };
-                return Some(Token::Error(self.error(&message)));
-            }
-            (State::Start | State::Quote, _) => unreachable!(),
+            State::Quote(_) => unreachable!(),
         };
+
         self.pos = pos;
-        if new_line {
-            self.line_no += 1;
-            self.line_start = pos;
-        }
+        self.line_no += new_lines;
+        self.line_start = line_start;
         Some(token)
     }
 }

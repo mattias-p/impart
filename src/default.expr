@@ -1,0 +1,50 @@
+case elevation < 0.375
+
+    case temperature < 0.375
+        case humidity < 0.375  "royalblue"
+        case humidity < 0.625  "teal"
+        default                "seagreen"
+
+    case temperature < 0.625
+        case humidity < 0.375  "mediumpurple"
+        case humidity < 0.625  "grey"
+        default                "goldenrod"
+
+    default
+        case humidity < 0.375  "darkviolet"
+        case humidity < 0.625  "darksalmon"
+        default                "crimson"
+
+case elevation < 0.625
+
+    case temperature < 0.375
+        case humidity < 0.375  "deepskyblue"
+        case humidity < 0.625  "turquoise"
+        default                "yellowgreen"
+
+    case temperature < 0.625
+        case humidity < 0.375  "thistle"
+        case humidity < 0.625  "lightslategrey"
+        default                "yellow"
+
+    default
+        case humidity < 0.375  "violet"
+        case humidity < 0.625  "salmon"
+        default                "tomato"
+
+default
+
+    case temperature < 0.375
+        case humidity < 0.375  "lightskyblue"
+        case humidity < 0.625  "paleturquoise"
+        default                "palegreen"
+
+    case temperature < 0.625
+        case humidity < 0.375  "lavender"
+        case humidity < 0.625  "lightgrey"
+        default                "lemonchiffon"
+
+    default
+        case humidity < 0.375  "plum"
+        case humidity < 0.625  "pink"
+        default                "lightsalmon"
