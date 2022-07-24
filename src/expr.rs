@@ -11,7 +11,6 @@ pub enum Token {
     Comparator(Comparator),
     Color(Color),
     Number(f32),
-    Error(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,10 +54,10 @@ impl<'a> Lexer<'a> {
             line_start: 0,
         }
     }
-    fn error(&self, message: &str) -> String {
+    fn error<T: AsRef<str>>(&self, message: T) -> String {
         format!(
             "{} at {}:{}",
-            message,
+            message.as_ref(),
             self.line_no,
             self.pos - self.line_start + 1
         )
@@ -66,7 +65,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = Result<Token, String>;
     fn next(&mut self) -> Option<Self::Item> {
         #[derive(PartialEq)]
         enum State {
@@ -98,7 +97,7 @@ impl<'a> Iterator for Lexer<'a> {
                     break;
                 }
                 (State::Quote, b'\n') => {
-                    return Some(Token::Error(self.error("unexpected EOL")));
+                    return Some(Err("unexpected EOL".to_string()));
                 }
                 (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b' ') => {
                     break;
@@ -106,9 +105,7 @@ impl<'a> Iterator for Lexer<'a> {
                 (State::Quote, b'"') => State::EndQuote(pos),
                 (State::Number(_), b'0'..=b'9' | b'.') => State::Number(pos),
                 (State::Number(_) | State::EndQuote(_), ch) => {
-                    return Some(Token::Error(
-                        self.error(&format!("unexpected character '{ch}'")),
-                    ));
+                    return Some(Err(format!("unexpected character '{ch}'")))
                 }
                 (State::Keyword(_), _) => State::Keyword(pos),
                 (State::Quote, _) => State::Quote,
@@ -130,13 +127,10 @@ impl<'a> Iterator for Lexer<'a> {
                     b"humidity" => Token::Variable(Variable::Humidity),
                     b"elevation" => Token::Variable(Variable::Elevation),
                     b"temperature" => Token::Variable(Variable::Temperature),
-                    token => {
-                        let message = match std::str::from_utf8(token) {
-                            Ok(token) => format!("invalid keyword '{token}'"),
-                            Err(_) => format!("invalid keyword '{token:?}'"),
-                        };
-                        return Some(Token::Error(self.error(&message)));
-                    }
+                    token => match std::str::from_utf8(token) {
+                        Ok(token) => return Some(Err(self.error(format!("invalid keyword '{token}'")))),
+                        Err(_) => return Some(Err(self.error(format!("invalid keyword '{token:?}'")))),
+                    },
                 };
                 self.pos = end + 1;
                 token
@@ -148,7 +142,7 @@ impl<'a> Iterator for Lexer<'a> {
                         self.pos = end + 1;
                         Token::Number(number)
                     }
-                    Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
+                    Err(err) => return Some(Err(err.to_string())),
                 }
             }
             State::EndQuote(end) => match std::str::from_utf8(&self.corpus[(self.pos + 1)..end]) {
@@ -157,16 +151,14 @@ impl<'a> Iterator for Lexer<'a> {
                         self.pos = end + 1;
                         Token::Color(color)
                     }
-                    Err(err) => {
-                        return Some(Token::Error(self.error(&format!("{} '{}'", err, name))))
-                    }
+                    Err(err) => return Some(Err(format!("{} '{}'", err, name))),
                 },
-                Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
+                Err(err) => return Some(Err(err.to_string())),
             },
             State::Quote => unreachable!(),
         };
 
-        Some(token)
+        Some(Ok(token))
     }
 }
 
@@ -192,23 +184,27 @@ struct Cond {
 
 impl Cond {
     fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let variable = match lexer.next() {
-            Some(Token::Variable(var)) => var,
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => Err(lexer.error(&format!("expected variable got {token:?}")))?,
-            None => Err(lexer.error("unexpected EOF"))?,
+        let variable = match lexer
+            .next()
+            .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
+        {
+            Token::Variable(var) => var,
+            token => Err(lexer.error(&format!("expected variable got {token:?}")))?,
         };
-        let comparator = match lexer.next() {
-            Some(Token::Comparator(cmp)) => cmp,
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => Err(lexer.error(&format!("expected comparator got {token:?}")))?,
-            None => Err(lexer.error("unexpected EOF"))?,
+
+        let comparator = match lexer
+            .next()
+            .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
+        {
+            Token::Comparator(cmp) => cmp,
+            token => Err(lexer.error(&format!("expected comparator got {token:?}")))?,
         };
-        let number = match lexer.next() {
-            Some(Token::Number(number)) => number,
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => Err(lexer.error(&format!("expected number got {token:?}")))?,
-            None => Err(lexer.error("unexpected EOF"))?,
+        let number = match lexer
+            .next()
+            .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
+        {
+            Token::Number(number) => number,
+            token => Err(lexer.error(&format!("expected number got {token:?}")))?,
         };
         Ok(Cond {
             variable,
@@ -241,18 +237,19 @@ impl Case {
     fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let cond = Cond::parse(lexer)?;
         let yes = Box::new(Expr::parse_inner(lexer)?);
-        match lexer.next() {
-            Some(Token::Default) => {
+        match lexer
+            .next()
+            .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
+        {
+            Token::Default => {
                 let no = Box::new(Expr::parse_inner(lexer)?);
                 Ok(Case { cond, yes, no })
             }
-            Some(Token::Case) => {
+            Token::Case => {
                 let no = Box::new(Expr::Case(Case::parse(lexer)?));
                 Ok(Case { cond, yes, no })
             }
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => Err(lexer.error(&format!("expected token 'default' got {token:?}")))?,
-            None => Err(lexer.error("unexpected EOF"))?,
+            token => Err(lexer.error(&format!("expected token 'default' got {token:?}")))?,
         }
     }
 
@@ -273,23 +270,21 @@ pub enum Expr {
 
 impl Expr {
     fn parse_inner<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        match lexer.next() {
-            Some(Token::Color(color)) => Ok(Expr::Color(color)),
-            Some(Token::Case) => Ok(Expr::Case(Case::parse(lexer)?)),
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => Err(lexer.error(&format!("unexpected token {token:?}"))),
-            None => Err(lexer.error("unexpected EOF")),
+        match lexer
+            .next()
+            .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
+        {
+            Token::Color(color) => Ok(Expr::Color(color)),
+            Token::Case => Ok(Expr::Case(Case::parse(lexer)?)),
+            token => Err(lexer.error(&format!("unexpected token {token:?}"))),
         }
     }
 
     pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let expr = Self::parse_inner(lexer)?;
-        match lexer.next() {
-            None => {}
-            Some(Token::Error(error)) => Err(error)?,
-            Some(token) => {
-                Err(lexer.error(&format!("expected EOF got {token:?}")))?;
-            }
+        if let Some(token) = lexer.next() {
+            let token = token?;
+            Err(lexer.error(&format!("expected EOF got {token:?}")))?;
         }
         Ok(expr)
     }
