@@ -18,7 +18,7 @@ impl Renderer {
         for cell in cells {
             let color = self.expr.eval(*cell);
 
-            image.extend(color.color().into_raw::<[u8; 3]>().into_iter());
+            image.extend(color.into_raw::<[u8; 3]>().into_iter());
         }
 
         image

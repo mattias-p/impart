@@ -1,4 +1,5 @@
 use palette::named;
+use palette::rgb::channels::Argb;
 use palette::Srgb;
 
 use crate::generate::Cell;
@@ -9,34 +10,12 @@ pub enum Token {
     Default,
     Variable(Variable),
     Comparator(Comparator),
-    Color(Color),
+    Quoted(String),
+    Hexcode(u32),
     Number(f32),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Color {
-    name: String,
-    color: Srgb<u8>,
-}
-
-impl Color {
-    pub fn color(&self) -> Srgb<u8> {
-        self.color
-    }
-}
-
-impl TryFrom<&str> for Color {
-    type Error = &'static str;
-    fn try_from(name: &str) -> Result<Self, Self::Error> {
-        match named::from_str(&name) {
-            Some(color) => Ok(Color {
-                name: name.to_string(),
-                color,
-            }),
-            None => Err("unrecognized color name"),
-        }
-    }
-}
+pub type Color = Srgb<u8>;
 
 pub struct Lexer<'a> {
     corpus: &'a [u8],
@@ -73,6 +52,7 @@ impl<'a> Iterator for Lexer<'a> {
             Keyword(usize),
             Number(usize),
             Quote,
+            Hexcode(usize),
             EndQuote(usize),
         }
 
@@ -91,21 +71,23 @@ impl<'a> Iterator for Lexer<'a> {
                     State::Start
                 }
                 (State::Start, b'"') => State::Quote,
+                (State::Start, b'#') => State::Hexcode(pos),
                 (State::Start, b'0'..=b'9' | b'.') => State::Number(pos),
                 (State::Start, _) => State::Keyword(pos),
-                (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b'\n') => {
-                    break;
-                }
-                (State::Quote, b'\n') => {
-                    return Some(Err("unexpected EOL".to_string()));
-                }
-                (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b' ') => {
+                (
+                    State::Keyword(_) | State::Number(_) | State::EndQuote(_) | State::Hexcode(_),
+                    b'\n' | b' ',
+                ) => {
                     break;
                 }
                 (State::Quote, b'"') => State::EndQuote(pos),
+                (State::Quote, b'\n') => {
+                    return Some(Err(self.error("unexpected EOL")));
+                }
+                (State::Hexcode(_), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => State::Hexcode(pos),
                 (State::Number(_), b'0'..=b'9' | b'.') => State::Number(pos),
-                (State::Number(_) | State::EndQuote(_), ch) => {
-                    return Some(Err(format!("unexpected character '{ch}'")))
+                (State::Number(_) | State::EndQuote(_) | State::Hexcode(_), ch) => {
+                    return Some(Err(self.error(format!("unexpected character '{ch}'"))))
                 }
                 (State::Keyword(_), _) => State::Keyword(pos),
                 (State::Quote, _) => State::Quote,
@@ -128,8 +110,12 @@ impl<'a> Iterator for Lexer<'a> {
                     b"elevation" => Token::Variable(Variable::Elevation),
                     b"temperature" => Token::Variable(Variable::Temperature),
                     token => match std::str::from_utf8(token) {
-                        Ok(token) => return Some(Err(self.error(format!("invalid keyword '{token}'")))),
-                        Err(_) => return Some(Err(self.error(format!("invalid keyword '{token:?}'")))),
+                        Ok(token) => {
+                            return Some(Err(self.error(format!("invalid keyword '{token}'"))))
+                        }
+                        Err(_) => {
+                            return Some(Err(self.error(format!("invalid keyword '{token:?}'"))))
+                        }
                     },
                 };
                 self.pos = end + 1;
@@ -142,18 +128,29 @@ impl<'a> Iterator for Lexer<'a> {
                         self.pos = end + 1;
                         Token::Number(number)
                     }
-                    Err(err) => return Some(Err(err.to_string())),
+                    Err(err) => return Some(Err(self.error(err.to_string()))),
+                }
+            }
+            State::Hexcode(end) => {
+                if self.pos + 6 != end {
+                    return Some(Err(self.error("invalid hexcode")));
+                }
+                let hexcode = &self.corpus[(self.pos + 1)..=end];
+                let hexcode = std::str::from_utf8(hexcode).unwrap();
+                match u32::from_str_radix(hexcode, 16) {
+                    Ok(rgb) => {
+                        self.pos = end + 1;
+                        Token::Hexcode(rgb)
+                    }
+                    Err(err) => return Some(Err(self.error(err.to_string()))),
                 }
             }
             State::EndQuote(end) => match std::str::from_utf8(&self.corpus[(self.pos + 1)..end]) {
-                Ok(name) => match Color::try_from(name) {
-                    Ok(color) => {
-                        self.pos = end + 1;
-                        Token::Color(color)
-                    }
-                    Err(err) => return Some(Err(format!("{} '{}'", err, name))),
-                },
-                Err(err) => return Some(Err(err.to_string())),
+                Ok(name) => {
+                    self.pos = end + 1;
+                    Token::Quoted(name.to_string())
+                }
+                Err(err) => return Some(Err(self.error(err.to_string()))),
             },
             State::Quote => unreachable!(),
         };
@@ -274,7 +271,11 @@ impl Expr {
             .next()
             .unwrap_or_else(|| Err(lexer.error("unexpected EOF")))?
         {
-            Token::Color(color) => Ok(Expr::Color(color)),
+            Token::Quoted(name) => match named::from_str(&name) {
+                Some(color) => Ok(Expr::Color(color)),
+                None => Err(lexer.error("unrecognized color name")),
+            },
+            Token::Hexcode(rgb) => Ok(Expr::Color(Color::from_u32::<Argb>(rgb))),
             Token::Case => Ok(Expr::Case(Case::parse(lexer)?)),
             token => Err(lexer.error(&format!("unexpected token {token:?}"))),
         }
@@ -304,13 +305,17 @@ mod tests {
     fn check(corpus: &[u8]) -> Result<Expr, String> {
         Expr::parse(&mut Lexer::new(corpus))
     }
+    fn named_color(name: &str) -> Expr {
+        Expr::Color(named::from_str(name).unwrap())
+    }
 
     #[test]
     fn parse() {
-        //assert_eq!(check(br#""brown""#), Ok(Expr::Color("brown".try_into().unwrap())));
+        assert_eq!(check(br#""brown""#), Ok(named_color("brown")));
+        assert_eq!(check(br#" "brown""#), Ok(named_color("brown")));
         assert_eq!(
-            check(br#" "brown""#),
-            Ok(Expr::Color("brown".try_into().unwrap()))
+            check(b"#fc9630"),
+            Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
             check(br#"case elevation > 0.5 "brown" default "cyan""#),
@@ -320,8 +325,8 @@ mod tests {
                     comparator: Comparator::GreaterThan,
                     number: 0.5,
                 },
-                yes: Box::new(Expr::Color("brown".try_into().unwrap())),
-                no: Box::new(Expr::Color("cyan".try_into().unwrap())),
+                yes: Box::new(named_color("brown")),
+                no: Box::new(named_color("cyan")),
             }))
         );
         assert_eq!(
@@ -346,10 +351,10 @@ mod tests {
                         comparator: Comparator::LessThan,
                         number: 0.31,
                     },
-                    yes: Box::new(Expr::Color("sandybrown".try_into().unwrap())),
-                    no: Box::new(Expr::Color("rosybrown".try_into().unwrap())),
+                    yes: Box::new(named_color("sandybrown")),
+                    no: Box::new(named_color("rosybrown")),
                 })),
-                no: Box::new(Expr::Color("cyan".try_into().unwrap())),
+                no: Box::new(named_color("cyan")),
             }))
         );
         assert_eq!(
@@ -360,15 +365,15 @@ mod tests {
                     comparator: Comparator::LessThan,
                     number: 0.5,
                 },
-                yes: Box::new(Expr::Color("cyan".try_into().unwrap())),
+                yes: Box::new(named_color("cyan")),
                 no: Box::new(Expr::Case(Case {
                     cond: Cond {
                         variable: Variable::Humidity,
                         comparator: Comparator::LessThan,
                         number: 0.31,
                     },
-                    yes: Box::new(Expr::Color("sandybrown".try_into().unwrap())),
-                    no: Box::new(Expr::Color("rosybrown".try_into().unwrap())),
+                    yes: Box::new(named_color("sandybrown")),
+                    no: Box::new(named_color("rosybrown")),
                 })),
             }))
         );
