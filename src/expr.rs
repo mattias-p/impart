@@ -79,7 +79,6 @@ impl<'a> Iterator for Lexer<'a> {
 
         let mut pos = self.pos;
         let mut state = State::Start;
-        let mut new_line = false;
         while let Some(ch) = self.corpus.get(pos) {
             state = match (&state, *ch) {
                 (State::Start, b'\n') => {
@@ -96,15 +95,12 @@ impl<'a> Iterator for Lexer<'a> {
                 (State::Start, b'0'..=b'9' | b'.') => State::Number(pos),
                 (State::Start, _) => State::Keyword(pos),
                 (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b'\n') => {
-                    pos += 1;
-                    new_line = true;
                     break;
                 }
                 (State::Quote, b'\n') => {
                     return Some(Token::Error(self.error("unexpected EOL")));
                 }
                 (State::Keyword(_) | State::Number(_) | State::EndQuote(_), b' ') => {
-                    pos += 1;
                     break;
                 }
                 (State::Quote, b'"') => State::EndQuote(pos),
@@ -126,7 +122,7 @@ impl<'a> Iterator for Lexer<'a> {
             }
             State::Keyword(end) => {
                 let s = &self.corpus[self.pos..=end];
-                match s {
+                let token = match s {
                     b">" => Token::Comparator(Comparator::GreaterThan),
                     b"<" => Token::Comparator(Comparator::LessThan),
                     b"case" => Token::Case,
@@ -141,30 +137,35 @@ impl<'a> Iterator for Lexer<'a> {
                         };
                         return Some(Token::Error(self.error(&message)));
                     }
-                }
+                };
+                self.pos = end + 1;
+                token
             }
             State::Number(end) => {
                 let number = &self.corpus[self.pos..=end];
                 match std::str::from_utf8(number).unwrap().parse::<f32>() {
-                    Ok(number) => Token::Number(number),
+                    Ok(number) => {
+                        self.pos = end + 1;
+                        Token::Number(number)
+                    }
                     Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
                 }
             }
             State::EndQuote(end) => match std::str::from_utf8(&self.corpus[(self.pos + 1)..end]) {
                 Ok(name) => match Color::try_from(name) {
-                    Ok(color) => Token::Color(color),
-                    Err(err) => Token::Error(self.error(&format!("{} '{}'", err, name))),
+                    Ok(color) => {
+                        self.pos = end + 1;
+                        Token::Color(color)
+                    }
+                    Err(err) => {
+                        return Some(Token::Error(self.error(&format!("{} '{}'", err, name))))
+                    }
                 },
                 Err(err) => return Some(Token::Error(self.error(&err.to_string()))),
             },
             State::Quote => unreachable!(),
         };
 
-        self.pos = pos;
-        if new_line {
-            self.line_no += 1;
-            self.line_start = pos;
-        }
         Some(token)
     }
 }
