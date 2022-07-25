@@ -3,12 +3,23 @@ use palette::rgb::channels::Argb;
 use palette::Srgb;
 
 use crate::generate::Cell;
-use crate::lexer::Comparator;
 use crate::lexer::Lexer;
 use crate::lexer::Token;
-use crate::lexer::Variable;
 
 pub type Color = Srgb<u8>;
+
+#[derive(Debug, PartialEq)]
+pub enum Variable {
+    Elevation,
+    Temperature,
+    Humidity,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Comparator {
+    LessThan,
+    GreaterThan,
+}
 
 #[derive(Debug, PartialEq)]
 struct Cond {
@@ -19,31 +30,28 @@ struct Cond {
 
 impl Cond {
     fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let context = lexer.get_context();
-        let variable = match lexer
-            .next()
-            .unwrap_or_else(|| Err(context.error("unexpected EOF")))?
-        {
-            Token::Variable(var) => var,
-            token => Err(context.error(&format!("expected variable got {token:?}")))?,
+        let token = lexer.next().unwrap()?;
+        let variable = match &token.inner {
+            Token::Elevation => Variable::Elevation,
+            Token::Temperature => Variable::Temperature,
+            Token::Humidity => Variable::Humidity,
+            inner => Err(token.error(format!("expected variable got {inner:?}")))?,
         };
 
-        let context = lexer.get_context();
-        let comparator = match lexer
-            .next()
-            .unwrap_or_else(|| Err(context.error("unexpected EOF")))?
-        {
-            Token::Comparator(cmp) => cmp,
-            token => Err(context.error(&format!("expected comparator got {token:?}")))?,
+        let token = lexer.next().unwrap()?;
+        let comparator = match &token.inner {
+            Token::LessThan => Comparator::LessThan,
+            Token::GreaterThan => Comparator::GreaterThan,
+            inner => Err(token.error(&format!("expected comparator got {inner:?}")))?,
         };
 
-        let context = lexer.get_context();
-        let number = match lexer
-            .next()
-            .unwrap_or_else(|| Err(context.error("unexpected EOF")))?
-        {
-            Token::Number(number) => number,
-            token => Err(context.error(&format!("expected number got {token:?}")))?,
+        let token = lexer.next().unwrap()?;
+        let number = match &token.inner {
+            Token::Float(s) => match s.parse::<f32>() {
+                Ok(number) => number,
+                Err(e) => Err(token.error(e.to_string()))?,
+            },
+            inner => Err(token.error(&format!("expected number got {inner:?}")))?,
         };
         Ok(Cond {
             variable,
@@ -77,11 +85,8 @@ impl Case {
         let cond = Cond::parse(lexer)?;
         let yes = Box::new(Expr::parse_inner(lexer)?);
 
-        let context = lexer.get_context();
-        match lexer
-            .next()
-            .unwrap_or_else(|| Err(context.error("unexpected EOF")))?
-        {
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
             Token::Else => {
                 let no = Box::new(Expr::parse_inner(lexer)?);
                 Ok(Case { cond, yes, no })
@@ -90,7 +95,7 @@ impl Case {
                 let no = Box::new(Expr::Case(Case::parse(lexer)?));
                 Ok(Case { cond, yes, no })
             }
-            token => Err(context.error(&format!("expected 'else' got {token:?}")))?,
+            inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
         }
     }
 
@@ -111,29 +116,30 @@ pub enum Expr {
 
 impl Expr {
     fn parse_inner<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let context = lexer.get_context();
-        match lexer
-            .next()
-            .unwrap_or_else(|| Err(context.error("unexpected EOF")))?
-        {
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
             Token::Quoted(name) => match named::from_str(&name) {
                 Some(color) => Ok(Expr::Color(color)),
-                None => Err(context.error("unrecognized color name")),
+                None => Err(token.error(format!("unrecognized color name {name}"))),
             },
-            Token::Hexcode(rgb) => Ok(Expr::Color(Color::from_u32::<Argb>(rgb))),
+            Token::Hexcode(s) => {
+                let rgb = u32::from_str_radix(s, 16).unwrap();
+                Ok(Expr::Color(Color::from_u32::<Argb>(rgb)))
+            }
             Token::Case => Ok(Expr::Case(Case::parse(lexer)?)),
-            token => Err(context.error(&format!("unexpected token {token:?}"))),
+            inner => Err(token.error(format!("unexpected token {inner:?}"))),
         }
     }
 
     pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let expr = Self::parse_inner(lexer)?;
 
-        let context = lexer.get_context();
-        if let Some(token) = lexer.next() {
-            let token = token?;
-            Err(context.error(&format!("expected EOF got {token:?}")))?;
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
+            Token::EOF => {}
+            inner => Err(token.error(format!("expected EOF got {inner:?}")))?,
         }
+
         Ok(expr)
     }
 
@@ -152,6 +158,7 @@ mod tests {
     fn check(corpus: &[u8]) -> Result<Expr, String> {
         Expr::parse(&mut Lexer::new(corpus))
     }
+
     fn named_color(name: &str) -> Expr {
         Expr::Color(named::from_str(name).unwrap())
     }
@@ -159,7 +166,6 @@ mod tests {
     #[test]
     fn parse() {
         assert_eq!(check(br#""brown""#), Ok(named_color("brown")));
-        assert_eq!(check(br#" "brown""#), Ok(named_color("brown")));
         assert_eq!(
             check(b"#fc9630"),
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))

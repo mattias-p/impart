@@ -1,15 +1,34 @@
+use std::str::Utf8Error;
+
 #[derive(Debug, PartialEq)]
-pub enum Token {
+pub struct AugToken<'a> {
+    pub line: usize,
+    pub col: usize,
+    pub inner: Token<'a>,
+}
+
+impl<'a> AugToken<'a> {
+    pub fn error<T: AsRef<str>>(&self, message: T) -> String {
+        format!("{} at {}:{}", message.as_ref(), self.line, self.col,)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Token<'a> {
+    Let,
     Case,
     Else,
-    Let,
+    Elevation,
+    Temperature,
+    Humidity,
     EqualSign,
-    Variable(Variable),
-    Comparator(Comparator),
-    Ident(String),
-    Quoted(String),
-    Hexcode(u32),
-    Number(f32),
+    LessThan,
+    GreaterThan,
+    Float(&'a str),
+    Hexcode(&'a str),
+    Quoted(&'a str),
+    Ident(&'a str),
+    EOF,
 }
 
 #[derive(Clone, Copy)]
@@ -47,35 +66,35 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn get_context(&mut self) -> LexerContext {
-        while let Some(ch) = self.corpus.get(self.context.pos) {
-            match *ch {
-                b'\n' => {
-                    self.context.pos += 1;
-                    self.context.line_no += 1;
-                    self.context.line_start = self.context.pos;
-                }
-                b' ' => {
-                    self.context.pos += 1;
-                }
-                _ => break,
-            };
-        }
-        self.context
+    pub fn get_str(&self, first: usize, last: usize) -> Result<&'a str, Utf8Error> {
+        std::str::from_utf8(&self.corpus[first..=last])
+    }
+
+    fn produce(&mut self, inner: Token<'a>, next_offset: usize) -> AugToken<'a> {
+        let token = AugToken {
+            line: self.context.line_no,
+            col: self.context.pos - self.context.line_start + 1,
+            inner,
+        };
+        self.context.pos = next_offset;
+        token
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token, String>;
+    type Item = Result<AugToken<'a>, String>;
     fn next(&mut self) -> Option<Self::Item> {
         #[derive(PartialEq)]
         enum State {
             Start,
             Bareword(usize),
-            Number(usize),
-            Quote,
+            Float0,
+            Float1,
+            Float(usize),
+            Hexcode0(u8),
             Hexcode(usize),
-            EndQuote(usize),
+            Quote0,
+            Quote(usize),
         }
 
         let mut pos = self.context.pos;
@@ -92,106 +111,133 @@ impl<'a> Iterator for Lexer<'a> {
                     self.context.pos += 1;
                     State::Start
                 }
-                (State::Start, b'"') => State::Quote,
-                (State::Start, b'#') => State::Hexcode(pos),
-                (State::Start, b'0'..=b'9' | b'.') => State::Number(pos),
+                (State::Start, b'"') => State::Quote0,
+                (State::Start, b'#') => State::Hexcode0(0),
+                (State::Start | State::Float0, b'0'..=b'9') => State::Float0,
                 (State::Start, _) => State::Bareword(pos),
                 (
-                    State::Bareword(_) | State::Number(_) | State::EndQuote(_) | State::Hexcode(_),
+                    State::Bareword(_) | State::Float(_) | State::Quote(_) | State::Hexcode(_),
                     b'\n' | b' ',
                 ) => {
                     break;
                 }
-                (State::Quote, b'"') => State::EndQuote(pos),
-                (State::Quote, b'\n') => {
+                (State::Quote0, b'"') => State::Quote(pos),
+                (State::Quote0, b'\n') => {
                     return Some(Err(self.context.error("unexpected EOL")));
                 }
-                (State::Hexcode(_), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => State::Hexcode(pos),
-                (State::Number(_), b'0'..=b'9' | b'.') => State::Number(pos),
-                (State::Number(_) | State::EndQuote(_) | State::Hexcode(_), ch) => {
+                (State::Hexcode0(count), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => {
+                    if *count < 5 {
+                        State::Hexcode0(count + 1)
+                    } else {
+                        State::Hexcode(pos)
+                    }
+                }
+                (State::Float0, b'.') => State::Float1,
+                (State::Float1 | State::Float(_), b'0'..=b'9') => State::Float(pos),
+                (
+                    State::Float0
+                    | State::Float1
+                    | State::Float(_)
+                    | State::Quote(_)
+                    | State::Hexcode0(_)
+                    | State::Hexcode(_),
+                    ch,
+                ) => {
                     return Some(Err(self
                         .context
                         .error(format!("unexpected character '{ch}'"))))
                 }
                 (State::Bareword(_), _) => State::Bareword(pos),
-                (State::Quote, _) => State::Quote,
+                (State::Quote0, _) => State::Quote0,
             };
             pos += 1;
         }
 
         let token = match state {
             State::Start => {
-                return None;
+                return Some(Ok(self.produce(Token::EOF, self.context.pos)));
             }
             State::Bareword(end) => {
                 let s = &self.corpus[self.context.pos..=end];
                 let token = match s {
-                    b">" => Token::Comparator(Comparator::GreaterThan),
-                    b"<" => Token::Comparator(Comparator::LessThan),
+                    b">" => Token::GreaterThan,
+                    b"<" => Token::LessThan,
                     b"=" => Token::EqualSign,
                     b"let" => Token::Let,
                     b"case" => Token::Case,
                     b"else" => Token::Else,
-                    b"humidity" => Token::Variable(Variable::Humidity),
-                    b"elevation" => Token::Variable(Variable::Elevation),
-                    b"temperature" => Token::Variable(Variable::Temperature),
+                    b"humidity" => Token::Humidity,
+                    b"elevation" => Token::Elevation,
+                    b"temperature" => Token::Temperature,
                     ident => match std::str::from_utf8(ident) {
-                        Ok(ident) => Token::Ident(ident.to_string()),
+                        Ok(ident) => Token::Ident(ident),
                         Err(err) => return Some(Err(self.context.error(err.to_string()))),
                     },
                 };
-                self.context.pos = end + 1;
-                token
+                self.produce(token, end + 1)
             }
-            State::Number(end) => {
-                let number = &self.corpus[self.context.pos..=end];
-                match std::str::from_utf8(number).unwrap().parse::<f32>() {
-                    Ok(number) => {
-                        self.context.pos = end + 1;
-                        Token::Number(number)
-                    }
-                    Err(err) => return Some(Err(self.context.error(err.to_string()))),
-                }
+            State::Float(end) => {
+                let s = self.get_str(self.context.pos, end).unwrap();
+                self.produce(Token::Float(s), end + 1)
             }
             State::Hexcode(end) => {
-                if self.context.pos + 6 != end {
-                    return Some(Err(self.context.error("invalid hexcode")));
-                }
-                let hexcode = &self.corpus[(self.context.pos + 1)..=end];
-                let hexcode = std::str::from_utf8(hexcode).unwrap();
-                match u32::from_str_radix(hexcode, 16) {
-                    Ok(rgb) => {
-                        self.context.pos = end + 1;
-                        Token::Hexcode(rgb)
-                    }
-                    Err(err) => return Some(Err(self.context.error(err.to_string()))),
-                }
+                let s = self.get_str(self.context.pos + 1, end).unwrap();
+                self.produce(Token::Hexcode(s), end + 1)
             }
-            State::EndQuote(end) => {
-                match std::str::from_utf8(&self.corpus[(self.context.pos + 1)..end]) {
-                    Ok(name) => {
-                        self.context.pos = end + 1;
-                        Token::Quoted(name.to_string())
-                    }
-                    Err(err) => return Some(Err(self.context.error(err.to_string()))),
-                }
+            State::Quote(end) => {
+                let s = self.get_str(self.context.pos + 1, end - 1).unwrap();
+                self.produce(Token::Quoted(s), end + 1)
             }
-            State::Quote => unreachable!(),
+            State::Float0 | State::Float1 | State::Hexcode0(_) | State::Quote0 => {
+                return Some(Err(self.context.error("unexpected EOL")));
+            }
         };
 
         Some(Ok(token))
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Variable {
-    Elevation,
-    Temperature,
-    Humidity,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[derive(Debug, PartialEq)]
-pub enum Comparator {
-    LessThan,
-    GreaterThan,
+    fn next_inner<'a>(lexer: &mut Lexer<'a>) -> Result<Token<'a>, String> {
+        Ok(lexer.next().unwrap()?.inner)
+    }
+
+    #[test]
+    fn lex() {
+        let mut lexer = Lexer::new(
+            br###"
+            let
+            case
+            else
+            elevation
+            temperature
+            humidity
+            =
+            <
+            >
+            3.14
+            #fc9630
+            "foobar"
+            foobar
+        "###,
+        );
+
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Let));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Case));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Elevation));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Temperature));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Humidity));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::LessThan));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::GreaterThan));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Float("3.14")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Quoted("foobar")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::EOF));
+    }
 }
