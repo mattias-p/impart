@@ -1,15 +1,15 @@
 use std::str::Utf8Error;
 
 #[derive(Debug, PartialEq)]
-pub struct AugToken<'a> {
+pub struct Loc<T> {
     pub line: usize,
     pub col: usize,
-    pub inner: Token<'a>,
+    pub inner: T,
 }
 
-impl<'a> AugToken<'a> {
-    pub fn error<T: AsRef<str>>(&self, message: T) -> String {
-        format!("{} at {}:{}", message.as_ref(), self.line, self.col,)
+impl<T> Loc<T> {
+    pub fn error<E: AsRef<str>>(&self, message: E) -> String {
+        format!("{} at {}:{}", message.as_ref(), self.line, self.col)
     }
 }
 
@@ -52,8 +52,8 @@ impl<'a> Lexer<'a> {
         std::str::from_utf8(&self.corpus[first..=last])
     }
 
-    fn produce(&mut self, inner: Token<'a>, next_offset: usize) -> AugToken<'a> {
-        let token = AugToken {
+    fn produce(&mut self, inner: Token<'a>, next_offset: usize) -> Loc<Token<'a>> {
+        let token = Loc {
             line: self.line_no,
             col: self.pos - self.line_start + 1,
             inner,
@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<AugToken<'a>, String>;
+    type Item = Result<Loc<Token<'a>>, String>;
     fn next(&mut self) -> Option<Self::Item> {
         #[derive(PartialEq)]
         enum State {
