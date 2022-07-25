@@ -14,7 +14,6 @@ use std::time::UNIX_EPOCH;
 use clap::Parser;
 use noise::Fbm;
 
-use crate::expr::Expr;
 use crate::generate::Generator;
 use crate::lexer::Lexer;
 use crate::render::Renderer;
@@ -86,7 +85,8 @@ fn main() {
         include_bytes!("default.expr")
     };
     let mut lexer = Lexer::new(expr);
-    let expr = Expr::parse(&mut lexer).unwrap();
+    let ast = ast::parse(&mut lexer).unwrap();
+    let expr = expr::compile(ast).unwrap();
 
     let renderer = Renderer::new(expr);
 

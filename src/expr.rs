@@ -1,106 +1,82 @@
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+
 use palette::named;
 use palette::rgb::channels::Argb;
 use palette::Srgb;
 
+use crate::ast;
 use crate::generate::Cell;
-use crate::lexer::Lexer;
-use crate::lexer::Token;
+use crate::lexer::Loc;
 
 pub type Color = Srgb<u8>;
+type Definitions<'a> = HashMap<&'a str, Loc<Literal>>;
 
-#[derive(Debug, PartialEq)]
-pub enum Variable {
-    Elevation,
-    Temperature,
-    Humidity,
+#[derive(Clone, Copy)]
+pub enum Literal {
+    Float(f32),
+    Color(Color),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Comparator {
-    LessThan,
-    GreaterThan,
-}
+impl<'a> TryFrom<ast::Literal<'a>> for Literal {
+    type Error = String;
 
-#[derive(Debug, PartialEq)]
-struct Cond {
-    variable: Variable,
-    comparator: Comparator,
-    number: f32,
-}
-
-impl Cond {
-    fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let token = lexer.next().unwrap()?;
-        let variable = match &token.inner {
-            Token::Elevation => Variable::Elevation,
-            Token::Temperature => Variable::Temperature,
-            Token::Humidity => Variable::Humidity,
-            inner => Err(token.error(format!("expected variable got {inner:?}")))?,
-        };
-
-        let token = lexer.next().unwrap()?;
-        let comparator = match &token.inner {
-            Token::LessThan => Comparator::LessThan,
-            Token::GreaterThan => Comparator::GreaterThan,
-            inner => Err(token.error(&format!("expected comparator got {inner:?}")))?,
-        };
-
-        let token = lexer.next().unwrap()?;
-        let number = match &token.inner {
-            Token::Float(s) => match s.parse::<f32>() {
-                Ok(number) => number,
-                Err(e) => Err(token.error(e.to_string()))?,
-            },
-            inner => Err(token.error(&format!("expected number got {inner:?}")))?,
-        };
-        Ok(Cond {
-            variable,
-            comparator,
-            number,
-        })
+    fn try_from(literal: ast::Literal<'a>) -> Result<Self, Self::Error> {
+        match literal {
+            ast::Literal::Hexcode(s) => {
+                let argb = u32::from_str_radix(s, 16).unwrap();
+                let color = Color::from_u32::<Argb>(argb);
+                Ok(Literal::Color(color))
+            }
+            ast::Literal::Quoted(s) => named::from_str(s)
+                .map(Literal::Color)
+                .ok_or(format!("invalid color name '{s}'")),
+            ast::Literal::Float(s) => {
+                let x = s.parse::<f32>().unwrap();
+                Ok(Literal::Float(x))
+            }
+        }
     }
+}
 
-    fn eval(&self, cell: Cell) -> bool {
-        let number = match self.variable {
-            Variable::Elevation => cell.elevation,
-            Variable::Temperature => cell.temperature,
-            Variable::Humidity => cell.humidity,
-        };
-        match self.comparator {
-            Comparator::GreaterThan => number > self.number,
-            Comparator::LessThan => number < self.number,
+impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Literal {
+    type Error = String;
+
+    fn try_from(pair: (ast::Value<'a>, &Definitions<'a>)) -> Result<Self, Self::Error> {
+        let (value, defs) = pair;
+        match value {
+            ast::Value::Literal(literal) => Literal::try_from(literal),
+            ast::Value::Ident(s) => match defs.get(s) {
+                Some(literal) => Ok(literal.inner),
+                None => Err(format!("use of undeclared identifier")),
+            },
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Case {
-    cond: Cond,
+    variable: ast::Variable,
+    comparator: ast::Comparator,
+    number: f32,
     yes: Box<Expr>,
     no: Box<Expr>,
 }
 
 impl Case {
-    fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let cond = Cond::parse(lexer)?;
-        let yes = Box::new(Expr::parse_inner(lexer)?);
-
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::Else => {
-                let no = Box::new(Expr::parse_inner(lexer)?);
-                Ok(Case { cond, yes, no })
-            }
-            Token::Case => {
-                let no = Box::new(Expr::Case(Case::parse(lexer)?));
-                Ok(Case { cond, yes, no })
-            }
-            inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
-        }
-    }
-
     fn eval(&self, cell: Cell) -> Color {
-        if self.cond.eval(cell) {
+        let number = match self.variable {
+            ast::Variable::Elevation => cell.elevation,
+            ast::Variable::Temperature => cell.temperature,
+            ast::Variable::Humidity => cell.humidity,
+        };
+
+        let cond = match self.comparator {
+            ast::Comparator::GreaterThan => number > self.number,
+            ast::Comparator::LessThan => number < self.number,
+        };
+
+        if cond {
             self.yes.eval(cell)
         } else {
             self.no.eval(cell)
@@ -115,32 +91,38 @@ pub enum Expr {
 }
 
 impl Expr {
-    fn parse_inner<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::Quoted(name) => match named::from_str(&name) {
-                Some(color) => Ok(Expr::Color(color)),
-                None => Err(token.error(format!("unrecognized color name {name}"))),
+    pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>, defs: &Definitions) -> Result<Self, String> {
+        match expr.inner.clone() {
+            ast::Expr::Value(value) => match (value, defs).try_into() {
+                Ok(Literal::Color(color)) => Ok(Expr::Color(color)),
+                Ok(Literal::Float(_)) => Err(expr.error("expected color got float")),
+                Err(e) => Err(expr.error(e.to_string()))?,
             },
-            Token::Hexcode(s) => {
-                let rgb = u32::from_str_radix(s, 16).unwrap();
-                Ok(Expr::Color(Color::from_u32::<Argb>(rgb)))
+            ast::Expr::Case(ast::Case {
+                variable,
+                comparator,
+                value,
+                yes,
+                no,
+            }) => {
+                let number = match (value.inner, defs).try_into() {
+                    Ok(Literal::Float(x)) => x,
+                    Ok(Literal::Color(_)) => Err(value.error("expected float got color"))?,
+                    Err(e) => Err(expr.error(e.to_string()))?,
+                };
+
+                let yes = Box::new(Expr::compile(&*yes, defs)?);
+                let no = Box::new(Expr::compile(&*no, defs)?);
+
+                Ok(Expr::Case(Case {
+                    variable: variable.inner,
+                    comparator: comparator.inner,
+                    number,
+                    yes,
+                    no,
+                }))
             }
-            Token::Case => Ok(Expr::Case(Case::parse(lexer)?)),
-            inner => Err(token.error(format!("unexpected token {inner:?}"))),
         }
-    }
-
-    pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let expr = Self::parse_inner(lexer)?;
-
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::EOF => {}
-            inner => Err(token.error(format!("expected EOF got {inner:?}")))?,
-        }
-
-        Ok(expr)
     }
 
     pub fn eval(&self, cell: Cell) -> Color {
@@ -151,12 +133,50 @@ impl Expr {
     }
 }
 
+pub fn compile<'a>(tops: Vec<Loc<ast::Top<'a>>>) -> Result<Expr, String> {
+    let mut expr: Option<Loc<_>> = None;
+    let mut defs = HashMap::new();
+    for top in tops {
+        match top.inner.clone() {
+            ast::Top::Let(def) => match defs.entry(def.ident.inner) {
+                Entry::Vacant(vacant) => {
+                    let literal = def.literal.try_map(Literal::try_from)?;
+                    vacant.insert(literal);
+                }
+                Entry::Occupied(occupied) => {
+                    let old_def = occupied.get();
+                    Err(format!(
+                        "identifier '{}' first defined at {}:{} but then redefined at {}:{}",
+                        def.ident.inner, old_def.line, old_def.col, top.line, top.col
+                    ))?;
+                }
+            },
+            ast::Top::Expr(inner) => {
+                if let Some(old_expr) = &expr {
+                    Err(format!("there must be exactly one expression but the first one was given at {}:{} and another one was given at {}:{}", old_expr.line, old_expr.col, top.line, top.col))?;
+                }
+                expr = Some(top.map(|_| inner));
+            }
+        }
+    }
+    match expr {
+        None => Err(format!(
+            "there must be exactly one expression but none was given"
+        )),
+        Some(expr) => Expr::compile(&expr, &defs),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::lexer::Lexer;
+
     fn check(corpus: &[u8]) -> Result<Expr, String> {
-        Expr::parse(&mut Lexer::new(corpus))
+        let mut lexer = Lexer::new(corpus);
+        let ast = ast::parse(&mut lexer)?;
+        compile(ast)
     }
 
     fn named_color(name: &str) -> Expr {
@@ -173,11 +193,9 @@ mod tests {
         assert_eq!(
             check(br#"case elevation > 0.5 "brown" else "cyan""#),
             Ok(Expr::Case(Case {
-                cond: Cond {
-                    variable: Variable::Elevation,
-                    comparator: Comparator::GreaterThan,
-                    number: 0.5,
-                },
+                variable: ast::Variable::Elevation,
+                comparator: ast::Comparator::GreaterThan,
+                number: 0.5,
                 yes: Box::new(named_color("brown")),
                 no: Box::new(named_color("cyan")),
             }))
@@ -193,17 +211,13 @@ mod tests {
         assert_eq!(
             check(br#"case elevation > 0.5 case humidity < 0.31 "sandybrown" else "rosybrown" else "cyan""#),
             Ok(Expr::Case(Case {
-                cond: Cond {
-                    variable: Variable::Elevation,
-                    comparator: Comparator::GreaterThan,
-                    number: 0.5,
-                },
+                variable: ast::Variable::Elevation,
+                comparator: ast::Comparator::GreaterThan,
+                number: 0.5,
                 yes: Box::new(Expr::Case(Case {
-                    cond: Cond {
-                        variable: Variable::Humidity,
-                        comparator: Comparator::LessThan,
-                        number: 0.31,
-                    },
+                    variable: ast::Variable::Humidity,
+                    comparator: ast::Comparator::LessThan,
+                    number: 0.31,
                     yes: Box::new(named_color("sandybrown")),
                     no: Box::new(named_color("rosybrown")),
                 })),
@@ -213,18 +227,14 @@ mod tests {
         assert_eq!(
             check(br#"case elevation < 0.5 "cyan" case humidity < 0.31 "sandybrown" else "rosybrown""#),
             Ok(Expr::Case(Case {
-                cond: Cond {
-                    variable: Variable::Elevation,
-                    comparator: Comparator::LessThan,
-                    number: 0.5,
-                },
+                variable: ast::Variable::Elevation,
+                comparator: ast::Comparator::LessThan,
+                number: 0.5,
                 yes: Box::new(named_color("cyan")),
                 no: Box::new(Expr::Case(Case {
-                    cond: Cond {
-                        variable: Variable::Humidity,
-                        comparator: Comparator::LessThan,
-                        number: 0.31,
-                    },
+                    variable: ast::Variable::Humidity,
+                    comparator: ast::Comparator::LessThan,
+                    number: 0.31,
                     yes: Box::new(named_color("sandybrown")),
                     no: Box::new(named_color("rosybrown")),
                 })),

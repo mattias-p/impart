@@ -1,6 +1,6 @@
 use std::str::Utf8Error;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Loc<T> {
     pub line: usize,
     pub col: usize,

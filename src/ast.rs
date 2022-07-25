@@ -1,9 +1,8 @@
 use crate::lexer::Lexer;
 use crate::lexer::Loc;
-use crate::lexer::LocExt;
 use crate::lexer::Token;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Literal<'a> {
     Float(&'a str),
     Hexcode(&'a str),
@@ -27,7 +26,7 @@ impl<'a> Literal<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value<'a> {
     Literal(Literal<'a>),
     Ident(&'a str),
@@ -50,10 +49,10 @@ impl<'a> Value<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Let<'a> {
-    ident: Loc<&'a str>,
-    literal: Loc<Literal<'a>>,
+    pub ident: Loc<&'a str>,
+    pub literal: Loc<Literal<'a>>,
 }
 
 impl<'a> Let<'a> {
@@ -76,26 +75,26 @@ impl<'a> Let<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Variable {
     Elevation,
     Temperature,
     Humidity,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Comparator {
     LessThan,
     GreaterThan,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Case<'a> {
-    variable: Loc<Variable>,
-    comparator: Loc<Comparator>,
-    value: Loc<Value<'a>>,
-    yes: Box<Loc<Expr<'a>>>,
-    no: Box<Loc<Expr<'a>>>,
+    pub variable: Loc<Variable>,
+    pub comparator: Loc<Comparator>,
+    pub value: Loc<Value<'a>>,
+    pub yes: Box<Loc<Expr<'a>>>,
+    pub no: Box<Loc<Expr<'a>>>,
 }
 
 impl<'a> Case<'a> {
@@ -139,7 +138,7 @@ impl<'a> Case<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
     Value(Value<'a>),
     Case(Case<'a>),
@@ -165,7 +164,7 @@ impl<'a> Expr<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Top<'a> {
     Let(Let<'a>),
     Expr(Expr<'a>),
@@ -217,6 +216,8 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Vec<Loc<Top<'a>>>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::lexer::LocExt;
 
     #[test]
     fn literal() {
