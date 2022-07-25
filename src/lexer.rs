@@ -31,38 +31,20 @@ pub enum Token<'a> {
     EOF,
 }
 
-#[derive(Clone, Copy)]
-pub struct LexerContext {
+pub struct Lexer<'a> {
+    corpus: &'a [u8],
     pos: usize,
     line_no: usize,
     line_start: usize,
-}
-
-impl LexerContext {
-    pub fn error<T: AsRef<str>>(&self, message: T) -> String {
-        format!(
-            "{} at {}:{}",
-            message.as_ref(),
-            self.line_no,
-            self.pos - self.line_start + 1
-        )
-    }
-}
-
-pub struct Lexer<'a> {
-    corpus: &'a [u8],
-    context: LexerContext,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(corpus: &'a [u8]) -> Self {
         Lexer {
             corpus,
-            context: LexerContext {
-                pos: 0,
-                line_no: 1,
-                line_start: 0,
-            },
+            pos: 0,
+            line_no: 1,
+            line_start: 0,
         }
     }
 
@@ -72,12 +54,21 @@ impl<'a> Lexer<'a> {
 
     fn produce(&mut self, inner: Token<'a>, next_offset: usize) -> AugToken<'a> {
         let token = AugToken {
-            line: self.context.line_no,
-            col: self.context.pos - self.context.line_start + 1,
+            line: self.line_no,
+            col: self.pos - self.line_start + 1,
             inner,
         };
-        self.context.pos = next_offset;
+        self.pos = next_offset;
         token
+    }
+
+    fn error<T: AsRef<str>>(&self, message: T) -> String {
+        format!(
+            "{} at {}:{}",
+            message.as_ref(),
+            self.line_no,
+            self.pos - self.line_start + 1
+        )
     }
 }
 
@@ -97,18 +88,18 @@ impl<'a> Iterator for Lexer<'a> {
             Quote(usize),
         }
 
-        let mut pos = self.context.pos;
+        let mut pos = self.pos;
         let mut state = State::Start;
         while let Some(ch) = self.corpus.get(pos) {
             state = match (&state, *ch) {
                 (State::Start, b'\n') => {
-                    self.context.pos += 1;
-                    self.context.line_no += 1;
-                    self.context.line_start = self.context.pos;
+                    self.pos += 1;
+                    self.line_no += 1;
+                    self.line_start = self.pos;
                     State::Start
                 }
                 (State::Start, b' ') => {
-                    self.context.pos += 1;
+                    self.pos += 1;
                     State::Start
                 }
                 (State::Start, b'"') => State::Quote0,
@@ -123,7 +114,7 @@ impl<'a> Iterator for Lexer<'a> {
                 }
                 (State::Quote0, b'"') => State::Quote(pos),
                 (State::Quote0, b'\n') => {
-                    return Some(Err(self.context.error("unexpected EOL")));
+                    return Some(Err(self.error("unexpected EOL")));
                 }
                 (State::Hexcode0(count), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => {
                     if *count < 5 {
@@ -142,11 +133,7 @@ impl<'a> Iterator for Lexer<'a> {
                     | State::Hexcode0(_)
                     | State::Hexcode(_),
                     ch,
-                ) => {
-                    return Some(Err(self
-                        .context
-                        .error(format!("unexpected character '{ch}'"))))
-                }
+                ) => return Some(Err(self.error(format!("unexpected character '{ch}'")))),
                 (State::Bareword(_), _) => State::Bareword(pos),
                 (State::Quote0, _) => State::Quote0,
             };
@@ -155,10 +142,10 @@ impl<'a> Iterator for Lexer<'a> {
 
         let token = match state {
             State::Start => {
-                return Some(Ok(self.produce(Token::EOF, self.context.pos)));
+                return Some(Ok(self.produce(Token::EOF, self.pos)));
             }
             State::Bareword(end) => {
-                let s = &self.corpus[self.context.pos..=end];
+                let s = &self.corpus[self.pos..=end];
                 let token = match s {
                     b">" => Token::GreaterThan,
                     b"<" => Token::LessThan,
@@ -171,25 +158,25 @@ impl<'a> Iterator for Lexer<'a> {
                     b"temperature" => Token::Temperature,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
-                        Err(err) => return Some(Err(self.context.error(err.to_string()))),
+                        Err(err) => return Some(Err(self.error(err.to_string()))),
                     },
                 };
                 self.produce(token, end + 1)
             }
             State::Float(end) => {
-                let s = self.get_str(self.context.pos, end).unwrap();
+                let s = self.get_str(self.pos, end).unwrap();
                 self.produce(Token::Float(s), end + 1)
             }
             State::Hexcode(end) => {
-                let s = self.get_str(self.context.pos + 1, end).unwrap();
+                let s = self.get_str(self.pos + 1, end).unwrap();
                 self.produce(Token::Hexcode(s), end + 1)
             }
             State::Quote(end) => {
-                let s = self.get_str(self.context.pos + 1, end - 1).unwrap();
+                let s = self.get_str(self.pos + 1, end - 1).unwrap();
                 self.produce(Token::Quoted(s), end + 1)
             }
             State::Float0 | State::Float1 | State::Hexcode0(_) | State::Quote0 => {
-                return Some(Err(self.context.error("unexpected EOL")));
+                return Some(Err(self.error("unexpected EOL")));
             }
         };
 
