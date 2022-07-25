@@ -11,9 +11,46 @@ impl<T> Loc<T> {
     pub fn error<E: AsRef<str>>(&self, message: E) -> String {
         format!("{} at {}:{}", message.as_ref(), self.line, self.col)
     }
+
+    pub fn map<F, U>(self, f: F) -> Loc<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        Loc {
+            line: self.line,
+            col: self.col,
+            inner: f(self.inner),
+        }
+    }
+
+    pub fn try_map<F, U, E>(self, f: F) -> Result<Loc<U>, E>
+    where
+        F: FnOnce(T) -> Result<U, E>,
+    {
+        Ok(f(self.inner)?.loc(self.line, self.col))
+    }
 }
 
-#[derive(Debug, PartialEq)]
+pub trait LocExt {
+    fn loc(self, line: usize, col: usize) -> Loc<Self>
+    where
+        Self: Sized;
+}
+
+impl<T> LocExt for T {
+    fn loc(self, line: usize, col: usize) -> Loc<Self>
+    where
+        Self: Sized,
+    {
+        Loc {
+            line,
+            col,
+            inner: self,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     Let,
     Case,

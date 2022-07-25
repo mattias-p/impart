@@ -1,3 +1,4 @@
+mod ast;
 mod expr;
 mod generate;
 mod lexer;
