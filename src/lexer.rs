@@ -61,7 +61,7 @@ pub enum Token<'a> {
     EqualSign,
     LessThan,
     GreaterThan,
-    Float(&'a str),
+    Decimal(&'a str),
     Hexcode(&'a str),
     Quoted(&'a str),
     Ident(&'a str),
@@ -115,10 +115,12 @@ impl<'a> Iterator for Lexer<'a> {
         #[derive(PartialEq)]
         enum State {
             Start,
+            Slash,
+            Comment,
             Bareword(usize),
-            Float0,
-            Float1,
-            Float(usize),
+            Decimal0,
+            Decimal1,
+            Decimal(usize),
             Hexcode0(u8),
             Hexcode(usize),
             Quote0,
@@ -129,7 +131,8 @@ impl<'a> Iterator for Lexer<'a> {
         let mut state = State::Start;
         while let Some(ch) = self.corpus.get(pos) {
             state = match (&state, *ch) {
-                (State::Start, b'\n') => {
+                // Start state
+                (State::Start | State::Comment, b'\n') => {
                     self.pos += 1;
                     self.line_no += 1;
                     self.line_start = self.pos;
@@ -139,20 +142,38 @@ impl<'a> Iterator for Lexer<'a> {
                     self.pos += 1;
                     State::Start
                 }
+                (State::Start, b'/') => State::Slash,
                 (State::Start, b'"') => State::Quote0,
                 (State::Start, b'#') => State::Hexcode0(0),
-                (State::Start | State::Float0, b'0'..=b'9') => State::Float0,
+                (State::Start | State::Decimal0, b'0'..=b'9') => State::Decimal0,
                 (State::Start, _) => State::Bareword(pos),
+
+                // Comments
+                (State::Slash, b'/') => {
+                    self.pos += 2;
+                    State::Comment
+                }
+                (State::Comment, _) => {
+                    self.pos += 1;
+                    State::Comment
+                }
+
+                // Whitespace
                 (
-                    State::Bareword(_) | State::Float(_) | State::Quote(_) | State::Hexcode(_),
-                    b'\n' | b' ',
+                    State::Bareword(_)
+                    | State::Decimal(_)
+                    | State::Quote(_)
+                    | State::Hexcode(_)
+                    | State::Slash,
+                    b' ' | b'\n',
                 ) => {
                     break;
                 }
-                (State::Quote0, b'"') => State::Quote(pos),
-                (State::Quote0, b'\n') => {
-                    return Some(Err(self.error("unexpected EOL")));
-                }
+
+                // Barewords
+                (State::Bareword(_) | State::Slash, _) => State::Bareword(pos),
+
+                // Hexcodes
                 (State::Hexcode0(count), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => {
                     if *count < 5 {
                         State::Hexcode0(count + 1)
@@ -160,25 +181,32 @@ impl<'a> Iterator for Lexer<'a> {
                         State::Hexcode(pos)
                     }
                 }
-                (State::Float0, b'.') => State::Float1,
-                (State::Float1 | State::Float(_), b'0'..=b'9') => State::Float(pos),
+
+                // Decimal numbers
+                (State::Decimal0, b'.') => State::Decimal1,
+                (State::Decimal1 | State::Decimal(_), b'0'..=b'9') => State::Decimal(pos),
                 (
-                    State::Float0
-                    | State::Float1
-                    | State::Float(_)
+                    State::Decimal0
+                    | State::Decimal1
+                    | State::Decimal(_)
                     | State::Quote(_)
                     | State::Hexcode0(_)
                     | State::Hexcode(_),
                     ch,
                 ) => return Some(Err(self.error(format!("unexpected character '{ch}'")))),
-                (State::Bareword(_), _) => State::Bareword(pos),
+
+                // Quoted strings
+                (State::Quote0, b'"') => State::Quote(pos),
+                (State::Quote0, b'\n') => {
+                    return Some(Err(self.error("unexpected EOL")));
+                }
                 (State::Quote0, _) => State::Quote0,
             };
             pos += 1;
         }
 
         let token = match state {
-            State::Start => {
+            State::Start | State::Comment => {
                 return Some(Ok(self.produce(Token::EOF, self.pos)));
             }
             State::Bareword(end) => {
@@ -200,9 +228,15 @@ impl<'a> Iterator for Lexer<'a> {
                 };
                 self.produce(token, end + 1)
             }
-            State::Float(end) => {
+            State::Slash => {
+                let s = &self.corpus[self.pos..=self.pos];
+                let ident = std::str::from_utf8(s).unwrap();
+                let token = Token::Ident(ident);
+                self.produce(token, self.pos + 1)
+            }
+            State::Decimal(end) => {
                 let s = self.get_str(self.pos, end).unwrap();
-                self.produce(Token::Float(s), end + 1)
+                self.produce(Token::Decimal(s), end + 1)
             }
             State::Hexcode(end) => {
                 let s = self.get_str(self.pos + 1, end).unwrap();
@@ -212,7 +246,7 @@ impl<'a> Iterator for Lexer<'a> {
                 let s = self.get_str(self.pos + 1, end - 1).unwrap();
                 self.produce(Token::Quoted(s), end + 1)
             }
-            State::Float0 | State::Float1 | State::Hexcode0(_) | State::Quote0 => {
+            State::Decimal0 | State::Decimal1 | State::Hexcode0(_) | State::Quote0 => {
                 return Some(Err(self.error("unexpected EOL")));
             }
         };
@@ -258,7 +292,7 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
         assert_eq!(next_inner(&mut lexer), Ok(Token::LessThan));
         assert_eq!(next_inner(&mut lexer), Ok(Token::GreaterThan));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Float("3.14")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("3.14")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Quoted("foobar")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));

@@ -13,7 +13,7 @@ impl<'a> Literal<'a> {
     fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         let token = lexer.next().unwrap()?;
         match token.inner {
-            Token::Float(s) => Ok(Ok(token.map(|_| Literal::Float(s)))),
+            Token::Decimal(s) => Ok(Ok(token.map(|_| Literal::Float(s)))),
             Token::Hexcode(s) => Ok(Ok(token.map(|_| Literal::Hexcode(s)))),
             Token::Quoted(s) => Ok(Ok(token.map(|_| Literal::Quoted(s)))),
             _ => Ok(Err(token)),
@@ -182,15 +182,6 @@ impl<'a> Top<'a> {
                 _ => Ok(Err(token)),
             },
         }
-    }
-
-    fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        Self::try_parse(lexer)?.map_err(|token| {
-            token.error(format!(
-                "expected 'let', 'case' or value got {:?}",
-                token.inner
-            ))
-        })
     }
 }
 
