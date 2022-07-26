@@ -1,50 +1,50 @@
 case elevation < 0.375
 
     case temperature < 0.375
-        case humidity < 0.375  "mediumblue"
-        case humidity < 0.625  "darkcyan"
-        else                   "darkolivegreen"
+        case humidity < 0.375  mediumblue
+        case humidity < 0.625  darkcyan
+        else                   darkolivegreen
 
     case temperature < 0.625
-        case humidity < 0.375  "rebeccapurple"
-        case humidity < 0.625  "dimgrey"
-        else                   "saddlebrown"
+        case humidity < 0.375  rebeccapurple
+        case humidity < 0.625  dimgrey
+        else                   saddlebrown
 
     else
-        case humidity < 0.375  "darkviolet"
-        case humidity < 0.625  "purple"
-        else                   "darkred"
+        case humidity < 0.375  darkviolet
+        case humidity < 0.625  purple
+        else                   darkred
 
 case elevation < 0.625
 
     case temperature < 0.375
-        case humidity < 0.375  "deepskyblue"
-        case humidity < 0.625  "mediumturquoise"
-        else                   "yellowgreen"
+        case humidity < 0.375  deepskyblue
+        case humidity < 0.625  mediumturquoise
+        else                   yellowgreen
 
     case temperature < 0.625
-        case humidity < 0.375  "mediumpurple"
-        case humidity < 0.625  "darkgrey"
-        else                   "goldenrod"
+        case humidity < 0.375  mediumpurple
+        case humidity < 0.625  darkgrey
+        else                   goldenrod
 
     else
-        case humidity < 0.375  "mediumorchid"
-        case humidity < 0.625  "palevioletred"
-        else                   "indianred"
+        case humidity < 0.375  mediumorchid
+        case humidity < 0.625  palevioletred
+        else                   indianred
 
 else
 
     case temperature < 0.375
-        case humidity < 0.375  "lightcyan"
-        case humidity < 0.625  "paleturquoise"
-        else                   "palegreen"
+        case humidity < 0.375  lightcyan
+        case humidity < 0.625  paleturquoise
+        else                   palegreen
 
     case temperature < 0.625
-        case humidity < 0.375  "lavender"
-        case humidity < 0.625  "gainsboro"
-        else                   "lemonchiffon"
+        case humidity < 0.375  lavender
+        case humidity < 0.625  gainsboro
+        else                   lemonchiffon
 
     else
-        case humidity < 0.375  "plum"
-        case humidity < 0.625  "pink"
-        else                   "navajowhite"
+        case humidity < 0.375  plum
+        case humidity < 0.625  pink
+        else                   navajowhite

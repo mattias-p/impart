@@ -28,9 +28,6 @@ impl<'a> TryFrom<ast::Literal<'a>> for Literal {
                 let color = Color::from_u32::<Argb>(argb);
                 Ok(Literal::Color(color))
             }
-            ast::Literal::Quoted(s) => named::from_str(s)
-                .map(Literal::Color)
-                .ok_or(format!("invalid color name '{s}'")),
             ast::Literal::Float(s) => {
                 let x = s.parse::<f32>().unwrap();
                 Ok(Literal::Float(x))
@@ -48,7 +45,10 @@ impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Literal {
             ast::Value::Literal(literal) => Literal::try_from(literal),
             ast::Value::Ident(s) => match defs.get(s) {
                 Some(literal) => Ok(literal.inner),
-                None => Err(format!("use of undeclared identifier")),
+                None => match named::from_str(s) {
+                    Some(color) => Ok(Literal::Color(color)),
+                    None => Err(format!("use of undeclared identifier")),
+                },
             },
         }
     }
@@ -140,14 +140,23 @@ pub fn compile<'a>(tops: Vec<Loc<ast::Top<'a>>>) -> Result<Expr, String> {
         match top.inner.clone() {
             ast::Top::Let(def) => match defs.entry(def.ident.inner) {
                 Entry::Vacant(vacant) => {
-                    let literal = def.literal.try_map(Literal::try_from)?;
-                    vacant.insert(literal);
+                    if named::from_str(def.ident.inner).is_some() {
+                        Err(format!(
+                            "cannot redefine '{}' at {}:{} (predefined)",
+                            def.ident.inner, def.ident.line, def.ident.col
+                        ))?;
+                    } else {
+                        let literal = def
+                            .ident
+                            .try_map(|_| Literal::try_from(def.literal.inner))?;
+                        vacant.insert(literal);
+                    }
                 }
                 Entry::Occupied(occupied) => {
                     let old_def = occupied.get();
                     Err(format!(
-                        "identifier '{}' first defined at {}:{} but then redefined at {}:{}",
-                        def.ident.inner, old_def.line, old_def.col, top.line, top.col
+                        "cannot redefine '{}' at {}:{} (first defined at {}:{})",
+                        def.ident.inner, def.ident.line, def.ident.col, old_def.line, old_def.col
                     ))?;
                 }
             },
@@ -185,13 +194,13 @@ mod tests {
 
     #[test]
     fn parse() {
-        assert_eq!(check(br#""brown""#), Ok(named_color("brown")));
+        assert_eq!(check(b"brown"), Ok(named_color("brown")));
         assert_eq!(
             check(b"#fc9630"),
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
-            check(br#"case elevation > 0.5 "brown" else "cyan""#),
+            check(b"case elevation > 0.5 brown else cyan"),
             Ok(Expr::Case(Case {
                 variable: ast::Variable::Elevation,
                 comparator: ast::Comparator::GreaterThan,
@@ -209,7 +218,7 @@ mod tests {
             Err("expected variable got Ident(\"xelevation\") at 2:1".to_string())
         );
         assert_eq!(
-            check(br#"case elevation > 0.5 case humidity < 0.31 "sandybrown" else "rosybrown" else "cyan""#),
+            check(b"case elevation > 0.5 case humidity < 0.31 sandybrown else rosybrown else cyan"),
             Ok(Expr::Case(Case {
                 variable: ast::Variable::Elevation,
                 comparator: ast::Comparator::GreaterThan,
@@ -225,7 +234,7 @@ mod tests {
             }))
         );
         assert_eq!(
-            check(br#"case elevation < 0.5 "cyan" case humidity < 0.31 "sandybrown" else "rosybrown""#),
+            check(b"case elevation < 0.5 cyan case humidity < 0.31 sandybrown else rosybrown"),
             Ok(Expr::Case(Case {
                 variable: ast::Variable::Elevation,
                 comparator: ast::Comparator::LessThan,
@@ -239,6 +248,14 @@ mod tests {
                     no: Box::new(named_color("rosybrown")),
                 })),
             }))
+        );
+        assert_eq!(
+            check(b"let brown = #123456\nbrown"),
+            Err("cannot redefine 'brown' at 1:5 (predefined)".to_string())
+        );
+        assert_eq!(
+            check(b"let foo = #123456\nlet foo = #654321\nfoo"),
+            Err("cannot redefine 'foo' at 2:5 (first defined at 1:5)".to_string())
         );
     }
 }

@@ -6,7 +6,6 @@ use crate::lexer::Token;
 pub enum Literal<'a> {
     Float(&'a str),
     Hexcode(&'a str),
-    Quoted(&'a str),
 }
 
 impl<'a> Literal<'a> {
@@ -15,7 +14,6 @@ impl<'a> Literal<'a> {
         match token.inner {
             Token::Decimal(s) => Ok(Ok(token.map(|_| Literal::Float(s)))),
             Token::Hexcode(s) => Ok(Ok(token.map(|_| Literal::Hexcode(s)))),
-            Token::Quoted(s) => Ok(Ok(token.map(|_| Literal::Quoted(s)))),
             _ => Ok(Err(token)),
         }
     }
