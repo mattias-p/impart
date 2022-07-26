@@ -10,15 +10,15 @@ use crate::generate::Cell;
 use crate::lexer::Loc;
 
 pub type Color = Srgb<u8>;
-type Definitions<'a> = HashMap<&'a str, Loc<Literal>>;
+type Definitions<'a> = HashMap<&'a str, Loc<Value>>;
 
 #[derive(Clone, Copy)]
-pub enum Literal {
+pub enum Value {
     Float(f32),
     Color(Color),
 }
 
-impl<'a> TryFrom<ast::Literal<'a>> for Literal {
+impl<'a> TryFrom<ast::Literal<'a>> for Value {
     type Error = String;
 
     fn try_from(literal: ast::Literal<'a>) -> Result<Self, Self::Error> {
@@ -26,27 +26,27 @@ impl<'a> TryFrom<ast::Literal<'a>> for Literal {
             ast::Literal::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 let color = Color::from_u32::<Argb>(argb);
-                Ok(Literal::Color(color))
+                Ok(Value::Color(color))
             }
             ast::Literal::Float(s) => {
                 let x = s.parse::<f32>().unwrap();
-                Ok(Literal::Float(x))
+                Ok(Value::Float(x))
             }
         }
     }
 }
 
-impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Literal {
+impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Value {
     type Error = String;
 
     fn try_from(pair: (ast::Value<'a>, &Definitions<'a>)) -> Result<Self, Self::Error> {
         let (value, defs) = pair;
         match value {
-            ast::Value::Literal(literal) => Literal::try_from(literal),
+            ast::Value::Literal(literal) => Value::try_from(literal),
             ast::Value::Ident(s) => match defs.get(s) {
-                Some(literal) => Ok(literal.inner),
+                Some(value) => Ok(value.inner),
                 None => match named::from_str(s) {
-                    Some(color) => Ok(Literal::Color(color)),
+                    Some(color) => Ok(Value::Color(color)),
                     None => Err(format!("use of undeclared identifier")),
                 },
             },
@@ -94,8 +94,8 @@ impl Expr {
     pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>, defs: &Definitions) -> Result<Self, String> {
         match expr.inner.clone() {
             ast::Expr::Value(value) => match (value, defs).try_into() {
-                Ok(Literal::Color(color)) => Ok(Expr::Color(color)),
-                Ok(Literal::Float(_)) => Err(expr.error("expected color got float")),
+                Ok(Value::Color(color)) => Ok(Expr::Color(color)),
+                Ok(Value::Float(_)) => Err(expr.error("expected color got float")),
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
             ast::Expr::Case(ast::Case {
@@ -106,8 +106,8 @@ impl Expr {
                 no,
             }) => {
                 let number = match (value.inner, defs).try_into() {
-                    Ok(Literal::Float(x)) => x,
-                    Ok(Literal::Color(_)) => Err(value.error("expected float got color"))?,
+                    Ok(Value::Float(x)) => x,
+                    Ok(Value::Color(_)) => Err(value.error("expected float got color"))?,
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
@@ -146,10 +146,8 @@ pub fn compile<'a>(tops: Vec<Loc<ast::Top<'a>>>) -> Result<Expr, String> {
                             def.ident.inner, def.ident.line, def.ident.col
                         ))?;
                     } else {
-                        let literal = def
-                            .ident
-                            .try_map(|_| Literal::try_from(def.literal.inner))?;
-                        vacant.insert(literal);
+                        let value = def.ident.try_map(|_| Value::try_from(def.literal.inner))?;
+                        vacant.insert(value);
                     }
                 }
                 Entry::Occupied(occupied) => {
