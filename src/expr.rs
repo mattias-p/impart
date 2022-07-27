@@ -96,16 +96,16 @@ impl<'a> Compiler<'a> {
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
-                let branch_true = Box::new(self.compile_expr(&inner.branch_true)?);
-                let branch_false = Box::new(self.compile_expr(&inner.branch_false)?);
+                let branch_true = self.compile_expr(&inner.branch_true)?;
+                let branch_false = self.compile_expr(&inner.branch_false)?;
 
-                Ok(Expr::If(If {
+                Ok(Expr::If(Box::new(If {
                     left,
                     comparator: inner.comparator.inner,
                     right,
                     branch_true,
                     branch_false,
-                }))
+                })))
             }
         }
     }
@@ -135,8 +135,8 @@ pub struct If {
     left: Float,
     comparator: ast::Comparator,
     right: Float,
-    branch_true: Box<Expr>,
-    branch_false: Box<Expr>,
+    branch_true: Expr,
+    branch_false: Expr,
 }
 
 impl If {
@@ -171,7 +171,7 @@ impl If {
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Immediate(Immediate),
-    If(If),
+    If(Box<If>),
 }
 
 impl Expr {
