@@ -110,7 +110,12 @@ impl<'a> If<'a> {
         let comparator = Comparator::parse(lexer)?;
         let right = Value::parse(lexer)?;
         let yes = Box::new(Expr::parse(lexer)?);
-        let no = Box::new(If::parse_else(lexer)?);
+
+        let token = lexer.next().unwrap()?;
+        let no = match &token.inner {
+            Token::Else => Box::new(Expr::parse(lexer)?),
+            inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
+        };
 
         Ok(If {
             left,
@@ -119,18 +124,6 @@ impl<'a> If<'a> {
             yes,
             no,
         })
-    }
-
-    fn parse_else(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::Else => Expr::parse(lexer),
-            Token::If => {
-                let body = If::parse_body(lexer)?;
-                Ok(token.map(|_| Expr::If(body)))
-            }
-            inner => Err(token.error(&format!("expected 'if' or 'else' got {inner:?}")))?,
-        }
     }
 }
 
@@ -208,126 +201,151 @@ mod tests {
 
     #[test]
     fn literal() {
-        struct Test {
-            input: &'static [u8],
-            expected: Result<Loc<Literal<'static>>, String>,
-        }
-        let tests = vec![
-            Test {
-                input: b"",
-                expected: Err("expected literal got EOF at 1:1".into()),
-            },
-            Test {
-                input: b"3.14",
-                expected: Ok(Literal::Float("3.14").loc(1, 1)),
-            },
-            Test {
-                input: b"#fc9630",
-                expected: Ok(Literal::Hexcode("fc9630").loc(1, 1)),
-            },
-        ];
-        for test in tests {
-            assert_eq!(Literal::parse(&mut Lexer::new(test.input)), test.expected);
-        }
+        assert_eq!(
+            Literal::parse(&mut Lexer::new(
+                //1234567
+                b"3.14",
+            )),
+            Ok(Literal::Float("3.14").loc(1, 1)),
+        );
     }
 
     #[test]
-    fn value() {
-        struct Test {
-            input: &'static [u8],
-            expected: Result<Loc<Value<'static>>, String>,
-        }
-        let tests = vec![
-            Test {
-                input: b"",
-                expected: Err("expected value got EOF at 1:1".into()),
-            },
-            Test {
-                input: b"3.14",
-                expected: Ok(Value::Literal(Literal::Float("3.14")).loc(1, 1)),
-            },
-            Test {
-                input: b"#fc9630",
-                expected: Ok(Value::Literal(Literal::Hexcode("fc9630")).loc(1, 1)),
-            },
-            Test {
-                input: b"i-denti-fier",
-                expected: Ok(Value::Ident("i-denti-fier").loc(1, 1)),
-            },
-        ];
-        for test in tests {
-            assert_eq!(Value::parse(&mut Lexer::new(test.input)), test.expected);
-        }
+    fn hexcode() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //1234567
+                b"#123456",
+            )),
+            Ok(vec![Top::Expr(Expr::Value(Value::Literal(
+                Literal::Hexcode("123456")
+            )))
+            .loc(1, 1)]),
+        );
     }
 
     #[test]
-    fn let_() {
-        struct Test {
-            input: &'static [u8],
-            expected: Result<Let<'static>, String>,
-        }
-        let tests = vec![
-            Test {
-                input: b"",
-                expected: Err("expected identifier got EOF at 1:1".into()),
-            },
-            Test {
-                input: b"pi = 3.14",
-                expected: Ok(Let {
-                    ident: "pi".loc(1, 1),
-                    literal: Literal::Float("3.14").loc(1, 6),
-                }),
-            },
-        ];
-        for test in tests {
-            assert_eq!(Let::parse_body(&mut Lexer::new(test.input)), test.expected);
-        }
+    fn ident() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //123
+                b"foo",
+            )),
+            Ok(vec![Top::Expr(Expr::Value(Value::Ident("foo"))).loc(1, 1)]),
+        );
     }
 
     #[test]
-    fn parser() {
-        struct Test {
-            input: &'static [u8],
-            expected: Result<Vec<Loc<Top<'static>>>, String>,
-        }
-        let tests = vec![
-            Test {
-                input: b"",
-                expected: Ok(vec![]),
-            },
-            Test {
-                input: b"foo",
-                expected: Ok(vec![Top::Expr(Expr::Value(Value::Ident("foo"))).loc(1, 1)]),
-            },
-            Test {
-                input: b"if elevation > 0.5 foo else bar",
-                expected: Ok(vec![Top::Expr(Expr::If(If {
-                    left: Value::Ident("elevation").loc(1, 4),
-                    comparator: Comparator::GreaterThan.loc(1, 14),
-                    right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                    yes: Box::new(Expr::Value(Value::Ident("foo")).loc(1, 20)),
-                    no: Box::new(Expr::Value(Value::Ident("bar")).loc(1, 29)),
-                }))
-                .loc(1, 1)]),
-            },
-            Test {
-                input: b"let pi = 3.14\nlet tau = 6.28",
-                expected: Ok(vec![
-                    Top::Let(Let {
-                        ident: "pi".loc(1, 5),
-                        literal: Literal::Float("3.14").loc(1, 10),
+    fn let_x() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1
+                //1234567890123
+                b"let pi = 3.14",
+            )),
+            Ok(vec![Top::Let(Let {
+                ident: "pi".loc(1, 5),
+                literal: Literal::Float("3.14").loc(1, 10),
+            })
+            .loc(1, 1),]),
+        );
+    }
+
+    #[test]
+    fn let_x_let_y() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1         2
+                //1234567890123456789012345678
+                b"let pi = 3.14 let tau = 6.28",
+            )),
+            Ok(vec![
+                Top::Let(Let {
+                    ident: "pi".loc(1, 5),
+                    literal: Literal::Float("3.14").loc(1, 10),
+                })
+                .loc(1, 1),
+                Top::Let(Let {
+                    ident: "tau".loc(1, 19),
+                    literal: Literal::Float("6.28").loc(1, 25),
+                })
+                .loc(1, 15),
+            ]),
+        );
+    }
+
+    #[test]
+    fn if_a_x_else_y() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1         2         3         4         5         6         7
+                //1234567890123456789012345678901234567890123456789012345678901234567890123
+                b"if elevation > 0.5 brown else cyan",
+            )),
+            Ok(vec![Top::Expr(Expr::If(If {
+                left: Value::Ident("elevation").loc(1, 4),
+                comparator: Comparator::GreaterThan.loc(1, 14),
+                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                yes: Box::new(Expr::Value(Value::Ident("brown")).loc(1, 20)),
+                no: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 31)),
+            }))
+            .loc(1, 1)]),
+        );
+    }
+
+    #[test]
+    fn if_a_x_else_if_b_y_else_z() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1         2         3         4         5         6         7
+                //1234567890123456789012345678901234567890123456789012345678901234567890123
+                b"if elevation > 0.5 cyan else if humidity < 0.31 sandybrown else rosybrown"
+            )),
+            Ok(vec![Top::Expr(Expr::If(If {
+                left: Value::Ident("elevation").loc(1, 4),
+                comparator: Comparator::GreaterThan.loc(1, 14),
+                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                yes: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 20)),
+                no: Box::new(
+                    Expr::If(If {
+                        left: Value::Ident("humidity").loc(1, 33),
+                        comparator: Comparator::LessThan.loc(1, 42),
+                        right: Value::Literal(Literal::Float("0.31")).loc(1, 44),
+                        yes: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 49)),
+                        no: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 65)),
                     })
-                    .loc(1, 1),
-                    Top::Let(Let {
-                        ident: "tau".loc(2, 5),
-                        literal: Literal::Float("6.28").loc(2, 11),
+                    .loc(1, 30),
+                ),
+            }))
+            .loc(1, 1)]),
+        );
+    }
+
+    #[test]
+    fn if_a_if_b_x_else_y_else_z() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1         2         3         4         5         6         7
+                //123456789012345678901234567890123456789012345678901234567890123456789012345678
+                b"if elevation > 0.5 if humidity < 0.31 sandybrown else rosybrown else cyan",
+            )),
+            Ok(vec![Top::Expr(Expr::If(If {
+                left: Value::Ident("elevation").loc(1, 4),
+                comparator: Comparator::GreaterThan.loc(1, 14),
+                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                yes: Box::new(
+                    Expr::If(If {
+                        left: Value::Ident("humidity").loc(1, 23),
+                        comparator: Comparator::LessThan.loc(1, 32),
+                        right: Value::Literal(Literal::Float("0.31")).loc(1, 34),
+                        yes: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 39)),
+                        no: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 55)),
                     })
-                    .loc(2, 1),
-                ]),
-            },
-        ];
-        for test in tests {
-            assert_eq!(parse(&mut Lexer::new(test.input)), test.expected);
-        }
+                    .loc(1, 20),
+                ),
+                no: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 70)),
+            }))
+            .loc(1, 1)]),
+        );
     }
 }

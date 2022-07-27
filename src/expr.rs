@@ -232,48 +232,6 @@ mod tests {
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
-            check(b"if elevation > 0.5 brown else cyan"),
-            Ok(Expr::If(If {
-                left: Float::Variable(Variable::Elevation),
-                comparator: ast::Comparator::GreaterThan,
-                right: Float::Const(0.5),
-                yes: Box::new(named_color("brown")),
-                no: Box::new(named_color("cyan")),
-            }))
-        );
-        assert_eq!(
-            check(b"if elevation > 0.5 if humidity < 0.31 sandybrown else rosybrown else cyan"),
-            Ok(Expr::If(If {
-                left: Float::Variable(Variable::Elevation),
-                comparator: ast::Comparator::GreaterThan,
-                right: Float::Const(0.5),
-                yes: Box::new(Expr::If(If {
-                    left: Float::Variable(Variable::Humidity),
-                    comparator: ast::Comparator::LessThan,
-                    right: Float::Const(0.31),
-                    yes: Box::new(named_color("sandybrown")),
-                    no: Box::new(named_color("rosybrown")),
-                })),
-                no: Box::new(named_color("cyan")),
-            }))
-        );
-        assert_eq!(
-            check(b"if elevation < 0.5 cyan if humidity < 0.31 sandybrown else rosybrown"),
-            Ok(Expr::If(If {
-                left: Float::Variable(Variable::Elevation),
-                comparator: ast::Comparator::LessThan,
-                right: Float::Const(0.5),
-                yes: Box::new(named_color("cyan")),
-                no: Box::new(Expr::If(If {
-                    left: Float::Variable(Variable::Humidity),
-                    comparator: ast::Comparator::LessThan,
-                    right: Float::Const(0.31),
-                    yes: Box::new(named_color("sandybrown")),
-                    no: Box::new(named_color("rosybrown")),
-                })),
-            }))
-        );
-        assert_eq!(
             check(b"let brown = #123456\nbrown"),
             Err("cannot redefine 'brown' at 1:5 (predefined)".to_string())
         );
