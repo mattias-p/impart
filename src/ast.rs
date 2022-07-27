@@ -74,65 +74,63 @@ impl<'a> Let<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Variable {
-    Elevation,
-    Temperature,
-    Humidity,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Comparator {
     LessThan,
     GreaterThan,
 }
 
+impl Comparator {
+    fn try_parse<'a>(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
+        let token = lexer.next().unwrap()?;
+        match token.inner {
+            Token::LessThan => Ok(Ok(token.map(|_| Comparator::LessThan))),
+            Token::GreaterThan => Ok(Ok(token.map(|_| Comparator::GreaterThan))),
+            _ => Ok(Err(token)),
+        }
+    }
+
+    fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
+        Self::try_parse(lexer)?
+            .map_err(|token| token.error(format!("expected comparator got {:?}", token.inner)))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Case<'a> {
-    pub variable: Loc<Variable>,
+    pub left: Loc<Value<'a>>,
     pub comparator: Loc<Comparator>,
-    pub value: Loc<Value<'a>>,
+    pub right: Loc<Value<'a>>,
     pub yes: Box<Loc<Expr<'a>>>,
     pub no: Box<Loc<Expr<'a>>>,
 }
 
 impl<'a> Case<'a> {
     fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let token = lexer.next().unwrap()?;
-        let variable = match &token.inner {
-            Token::Elevation => token.map(|_| Variable::Elevation),
-            Token::Temperature => token.map(|_| Variable::Temperature),
-            Token::Humidity => token.map(|_| Variable::Humidity),
-            inner => Err(token.error(format!("expected variable got {inner:?}")))?,
-        };
-
-        let token = lexer.next().unwrap()?;
-        let comparator = match &token.inner {
-            Token::LessThan => token.map(|_| Comparator::LessThan),
-            Token::GreaterThan => token.map(|_| Comparator::GreaterThan),
-            inner => Err(token.error(&format!("expected comparator got {inner:?}")))?,
-        };
-
-        let value = Value::parse(lexer)?;
-
+        let left = Value::parse(lexer)?;
+        let comparator = Comparator::parse(lexer)?;
+        let right = Value::parse(lexer)?;
         let yes = Box::new(Expr::parse(lexer)?);
-
-        let token = lexer.next().unwrap()?;
-        let no = match &token.inner {
-            Token::Else => Box::new(Expr::parse(lexer)?),
-            Token::Case => {
-                let case = Case::parse_body(lexer)?;
-                Box::new(token.map(|_| Expr::Case(case)))
-            }
-            inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
-        };
+        let no = Box::new(Case::parse_else(lexer)?);
 
         Ok(Case {
-            variable,
+            left,
             comparator,
-            value,
+            right,
             yes,
             no,
         })
+    }
+
+    fn parse_else(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
+            Token::Else => Expr::parse(lexer),
+            Token::Case => {
+                let case = Case::parse_body(lexer)?;
+                Ok(token.map(|_| Expr::Case(case)))
+            }
+            inner => Err(token.error(&format!("expected 'case' or 'else' got {inner:?}")))?,
+        }
     }
 }
 
@@ -304,9 +302,9 @@ mod tests {
             Test {
                 input: b"case elevation > 0.5 foo else bar",
                 expected: Ok(vec![Top::Expr(Expr::Case(Case {
-                    variable: Variable::Elevation.loc(1, 6),
+                    left: Value::Ident("elevation").loc(1, 6),
                     comparator: Comparator::GreaterThan.loc(1, 16),
-                    value: Value::Literal(Literal::Float("0.5")).loc(1, 18),
+                    right: Value::Literal(Literal::Float("0.5")).loc(1, 18),
                     yes: Box::new(Expr::Value(Value::Ident("foo")).loc(1, 22)),
                     no: Box::new(Expr::Value(Value::Ident("bar")).loc(1, 31)),
                 }))

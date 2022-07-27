@@ -55,9 +55,6 @@ pub enum Token<'a> {
     Let,
     Case,
     Else,
-    Elevation,
-    Temperature,
-    Humidity,
     EqualSign,
     LessThan,
     GreaterThan,
@@ -202,9 +199,6 @@ impl<'a> Iterator for Lexer<'a> {
                     b"let" => Token::Let,
                     b"case" => Token::Case,
                     b"else" => Token::Else,
-                    b"humidity" => Token::Humidity,
-                    b"elevation" => Token::Elevation,
-                    b"temperature" => Token::Temperature,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
                         Err(err) => return Some(Err(self.error(err.to_string()))),
@@ -250,9 +244,6 @@ mod tests {
                 let
                 case
                 else
-                elevation
-                temperature
-                humidity
                 =
                 <
                 >
@@ -265,9 +256,6 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Let));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Case));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Elevation));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Temperature));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Humidity));
         assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
         assert_eq!(next_inner(&mut lexer), Ok(Token::LessThan));
         assert_eq!(next_inner(&mut lexer), Ok(Token::GreaterThan));

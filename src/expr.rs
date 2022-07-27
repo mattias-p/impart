@@ -12,9 +12,22 @@ use crate::lexer::Loc;
 pub type Color = Srgb<u8>;
 type Definitions<'a> = HashMap<&'a str, Loc<Value>>;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Variable {
+    Elevation,
+    Temperature,
+    Humidity,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Float {
+    Const(f32),
+    Variable(Variable),
+}
+
 #[derive(Clone, Copy)]
 pub enum Value {
-    Float(f32),
+    Float(Float),
     Color(Color),
 }
 
@@ -30,7 +43,7 @@ impl<'a> TryFrom<ast::Literal<'a>> for Value {
             }
             ast::Literal::Float(s) => {
                 let x = s.parse::<f32>().unwrap();
-                Ok(Value::Float(x))
+                Ok(Value::Float(Float::Const(x)))
             }
         }
     }
@@ -43,6 +56,9 @@ impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Value {
         let (value, defs) = pair;
         match value {
             ast::Value::Literal(literal) => Value::try_from(literal),
+            ast::Value::Ident("elevation") => Ok(Value::Float(Float::Variable(Variable::Elevation))),
+            ast::Value::Ident("temperature") => Ok(Value::Float(Float::Variable(Variable::Temperature))),
+            ast::Value::Ident("humidity") => Ok(Value::Float(Float::Variable(Variable::Humidity))),
             ast::Value::Ident(s) => match defs.get(s) {
                 Some(value) => Ok(value.inner),
                 None => match named::from_str(s) {
@@ -56,24 +72,32 @@ impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Value {
 
 #[derive(Debug, PartialEq)]
 pub struct Case {
-    variable: ast::Variable,
+    left: Float,
     comparator: ast::Comparator,
-    number: f32,
+    right: Float,
     yes: Box<Expr>,
     no: Box<Expr>,
 }
 
 impl Case {
     fn eval(&self, cell: Cell) -> Color {
-        let number = match self.variable {
-            ast::Variable::Elevation => cell.elevation,
-            ast::Variable::Temperature => cell.temperature,
-            ast::Variable::Humidity => cell.humidity,
+        let left = match self.left {
+            Float::Const(value) => value,
+            Float::Variable(Variable::Elevation) => cell.elevation,
+            Float::Variable(Variable::Temperature) => cell.temperature,
+            Float::Variable(Variable::Humidity) => cell.humidity,
+        };
+
+        let right = match self.right {
+            Float::Const(value) => value,
+            Float::Variable(Variable::Elevation) => cell.elevation,
+            Float::Variable(Variable::Temperature) => cell.temperature,
+            Float::Variable(Variable::Humidity) => cell.humidity,
         };
 
         let cond = match self.comparator {
-            ast::Comparator::GreaterThan => number > self.number,
-            ast::Comparator::LessThan => number < self.number,
+            ast::Comparator::GreaterThan => left > right,
+            ast::Comparator::LessThan => left < right,
         };
 
         if cond {
@@ -99,15 +123,21 @@ impl Expr {
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
             ast::Expr::Case(ast::Case {
-                variable,
+                left,
                 comparator,
-                value,
+                right,
                 yes,
                 no,
             }) => {
-                let number = match (value.inner, defs).try_into() {
+                let left = match (left.inner, defs).try_into() {
                     Ok(Value::Float(x)) => x,
-                    Ok(Value::Color(_)) => Err(value.error("expected float got color"))?,
+                    Ok(Value::Color(_)) => Err(left.error("expected float got color"))?,
+                    Err(e) => Err(expr.error(e.to_string()))?,
+                };
+
+                let right = match (right.inner, defs).try_into() {
+                    Ok(Value::Float(x)) => x,
+                    Ok(Value::Color(_)) => Err(right.error("expected float got color"))?,
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
@@ -115,9 +145,9 @@ impl Expr {
                 let no = Box::new(Expr::compile(&*no, defs)?);
 
                 Ok(Expr::Case(Case {
-                    variable: variable.inner,
+                    left,
                     comparator: comparator.inner,
-                    number,
+                    right,
                     yes,
                     no,
                 }))
@@ -200,31 +230,23 @@ mod tests {
         assert_eq!(
             check(b"case elevation > 0.5 brown else cyan"),
             Ok(Expr::Case(Case {
-                variable: ast::Variable::Elevation,
+                left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::GreaterThan,
-                number: 0.5,
+                right: Float::Const(0.5),
                 yes: Box::new(named_color("brown")),
                 no: Box::new(named_color("cyan")),
             }))
         );
         assert_eq!(
-            check(b"case xelevation"),
-            Err("expected variable got Ident(\"xelevation\") at 1:6".to_string())
-        );
-        assert_eq!(
-            check(b"case\nxelevation"),
-            Err("expected variable got Ident(\"xelevation\") at 2:1".to_string())
-        );
-        assert_eq!(
             check(b"case elevation > 0.5 case humidity < 0.31 sandybrown else rosybrown else cyan"),
             Ok(Expr::Case(Case {
-                variable: ast::Variable::Elevation,
+                left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::GreaterThan,
-                number: 0.5,
+                right: Float::Const(0.5),
                 yes: Box::new(Expr::Case(Case {
-                    variable: ast::Variable::Humidity,
+                    left: Float::Variable(Variable::Humidity),
                     comparator: ast::Comparator::LessThan,
-                    number: 0.31,
+                    right: Float::Const(0.31),
                     yes: Box::new(named_color("sandybrown")),
                     no: Box::new(named_color("rosybrown")),
                 })),
@@ -234,14 +256,14 @@ mod tests {
         assert_eq!(
             check(b"case elevation < 0.5 cyan case humidity < 0.31 sandybrown else rosybrown"),
             Ok(Expr::Case(Case {
-                variable: ast::Variable::Elevation,
+                left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::LessThan,
-                number: 0.5,
+                right: Float::Const(0.5),
                 yes: Box::new(named_color("cyan")),
                 no: Box::new(Expr::Case(Case {
-                    variable: ast::Variable::Humidity,
+                    left: Float::Variable(Variable::Humidity),
                     comparator: ast::Comparator::LessThan,
-                    number: 0.31,
+                    right: Float::Const(0.31),
                     yes: Box::new(named_color("sandybrown")),
                     no: Box::new(named_color("rosybrown")),
                 })),
