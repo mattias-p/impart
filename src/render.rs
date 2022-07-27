@@ -1,6 +1,7 @@
 use palette::Pixel;
 
 use crate::expr::Expr;
+use crate::expr::Immediate;
 use crate::generate::Cell;
 
 pub struct Renderer {
@@ -16,9 +17,10 @@ impl Renderer {
         let mut image: Vec<u8> = Vec::with_capacity(cells.len() * 3);
 
         for cell in cells {
-            let color = self.expr.eval(*cell);
-
-            image.extend(color.into_raw::<[u8; 3]>().into_iter());
+            match self.expr.eval(*cell) {
+                Immediate::Color(color) => image.extend(color.into_raw::<[u8; 3]>().into_iter()),
+                imm => panic!("expected color got {imm:?}"),
+            }
         }
 
         image

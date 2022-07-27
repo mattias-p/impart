@@ -51,7 +51,7 @@ impl<'a> Compiler<'a> {
     pub fn compile_expr(&mut self, expr: &Loc<ast::Expr<'a>>) -> Result<Expr, String> {
         match expr.inner.clone() {
             ast::Expr::Value(value) => match self.compile_value(&value) {
-                Ok(Immediate::Color(color)) => Ok(Expr::Color(color)),
+                Ok(Immediate::Color(color)) => Ok(Expr::Immediate(Immediate::Color(color))),
                 Ok(Immediate::Float(_)) => Err(expr.error("expected color got float")),
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
@@ -124,7 +124,7 @@ pub enum Float {
     Variable(Variable),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Immediate {
     Float(Float),
     Color(Color),
@@ -140,7 +140,7 @@ pub struct If {
 }
 
 impl If {
-    fn eval(&self, cell: Cell) -> Color {
+    fn eval(&self, cell: Cell) -> Immediate {
         let left = match self.left {
             Float::Const(value) => value,
             Float::Variable(Variable::Elevation) => cell.elevation,
@@ -170,14 +170,14 @@ impl If {
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
-    Color(Color),
+    Immediate(Immediate),
     If(If),
 }
 
 impl Expr {
-    pub fn eval(&self, cell: Cell) -> Color {
+    pub fn eval(&self, cell: Cell) -> Immediate {
         match self {
-            Expr::Color(name) => name.clone(),
+            Expr::Immediate(imm) => imm.clone(),
             Expr::If(expr) => expr.eval(cell),
         }
     }
@@ -203,7 +203,7 @@ mod tests {
     }
 
     fn named_color(name: &str) -> Expr {
-        Expr::Color(named::from_str(name).unwrap())
+        Expr::Immediate(Immediate::Color(named::from_str(name).unwrap()))
     }
 
     #[test]
@@ -211,7 +211,7 @@ mod tests {
         assert_eq!(check(b"brown"), Ok(named_color("brown")));
         assert_eq!(
             check(b"#fc9630"),
-            Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
+            Ok(Expr::Immediate(Immediate::Color(Srgb::from_u32::<Argb>(0xfc9630))))
         );
         assert_eq!(
             check(b"let brown = #123456 in\nbrown"),
