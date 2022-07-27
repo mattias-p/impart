@@ -111,6 +111,7 @@ impl<'a> Iterator for Lexer<'a> {
         #[derive(PartialEq)]
         enum State {
             Start,
+            StartCR,
             Slash,
             Comment,
             Bareword(usize),
@@ -126,20 +127,31 @@ impl<'a> Iterator for Lexer<'a> {
         while let Some(ch) = self.corpus.get(pos) {
             state = match (&state, *ch) {
                 // Start state
+                (State::Start | State::StartCR | State::Comment, b'\r') => {
+                    self.pos += 1;
+                    self.line_no += 1;
+                    self.line_start = self.pos;
+                    State::StartCR
+                }
+                (State::StartCR, b'\n') => {
+                    self.pos += 1;
+                    self.line_start = self.pos;
+                    State::Start
+                }
                 (State::Start | State::Comment, b'\n') => {
                     self.pos += 1;
                     self.line_no += 1;
                     self.line_start = self.pos;
                     State::Start
                 }
-                (State::Start, b' ') => {
+                (State::Start | State::StartCR, b' ') => {
                     self.pos += 1;
                     State::Start
                 }
-                (State::Start, b'/') => State::Slash,
-                (State::Start, b'#') => State::Hexcode0(0),
-                (State::Start | State::Decimal0, b'0'..=b'9') => State::Decimal0,
-                (State::Start, _) => State::Bareword(pos),
+                (State::Start | State::StartCR, b'/') => State::Slash,
+                (State::Start | State::StartCR, b'#') => State::Hexcode0(0),
+                (State::Start | State::StartCR | State::Decimal0, b'0'..=b'9') => State::Decimal0,
+                (State::Start | State::StartCR, _) => State::Bareword(pos),
 
                 // Comments
                 (State::Slash, b'/') => {
@@ -154,7 +166,7 @@ impl<'a> Iterator for Lexer<'a> {
                 // Whitespace
                 (
                     State::Bareword(_) | State::Decimal(_) | State::Hexcode(_) | State::Slash,
-                    b' ' | b'\n',
+                    b' ' | b'\n' | b'\r',
                 ) => {
                     break;
                 }
@@ -187,7 +199,7 @@ impl<'a> Iterator for Lexer<'a> {
         }
 
         let token = match state {
-            State::Start | State::Comment => {
+            State::Start | State::StartCR | State::Comment => {
                 return Some(Ok(self.produce(Token::EOF, self.pos)));
             }
             State::Bareword(end) => {
@@ -238,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn lex() {
+    fn tokens() {
         let mut lexer = Lexer::new(
             b"
                 let
@@ -263,5 +275,20 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::EOF));
+    }
+
+    #[test]
+    fn positions() {
+        let mut lexer = Lexer::new(b"A B C\nD\n  E\n\nF\r\nG\r\n\r\nH\r \nI");
+
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("A").loc(1, 1))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("B").loc(1, 3))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("C").loc(1, 5))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("D").loc(2, 1))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("E").loc(3, 3))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("F").loc(5, 1))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("G").loc(6, 1))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("H").loc(8, 1))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Ident("I").loc(10, 1))));
     }
 }

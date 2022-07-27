@@ -56,8 +56,12 @@ impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Value {
         let (value, defs) = pair;
         match value {
             ast::Value::Literal(literal) => Value::try_from(literal),
-            ast::Value::Ident("elevation") => Ok(Value::Float(Float::Variable(Variable::Elevation))),
-            ast::Value::Ident("temperature") => Ok(Value::Float(Float::Variable(Variable::Temperature))),
+            ast::Value::Ident("elevation") => {
+                Ok(Value::Float(Float::Variable(Variable::Elevation)))
+            }
+            ast::Value::Ident("temperature") => {
+                Ok(Value::Float(Float::Variable(Variable::Temperature)))
+            }
             ast::Value::Ident("humidity") => Ok(Value::Float(Float::Variable(Variable::Humidity))),
             ast::Value::Ident(s) => match defs.get(s) {
                 Some(value) => Ok(value.inner),
