@@ -53,7 +53,7 @@ impl<T> LocExt for T {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     Let,
-    Case,
+    If,
     Else,
     EqualSign,
     LessThan,
@@ -209,7 +209,7 @@ impl<'a> Iterator for Lexer<'a> {
                     b"<" => Token::LessThan,
                     b"=" => Token::EqualSign,
                     b"let" => Token::Let,
-                    b"case" => Token::Case,
+                    b"if" => Token::If,
                     b"else" => Token::Else,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
@@ -254,7 +254,7 @@ mod tests {
         let mut lexer = Lexer::new(
             b"
                 let
-                case
+                if
                 else
                 =
                 <
@@ -266,7 +266,7 @@ mod tests {
         );
 
         assert_eq!(next_inner(&mut lexer), Ok(Token::Let));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Case));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::If));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
         assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
         assert_eq!(next_inner(&mut lexer), Ok(Token::LessThan));

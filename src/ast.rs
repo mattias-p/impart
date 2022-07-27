@@ -96,7 +96,7 @@ impl Comparator {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Case<'a> {
+pub struct If<'a> {
     pub left: Loc<Value<'a>>,
     pub comparator: Loc<Comparator>,
     pub right: Loc<Value<'a>>,
@@ -104,15 +104,15 @@ pub struct Case<'a> {
     pub no: Box<Loc<Expr<'a>>>,
 }
 
-impl<'a> Case<'a> {
+impl<'a> If<'a> {
     fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let left = Value::parse(lexer)?;
         let comparator = Comparator::parse(lexer)?;
         let right = Value::parse(lexer)?;
         let yes = Box::new(Expr::parse(lexer)?);
-        let no = Box::new(Case::parse_else(lexer)?);
+        let no = Box::new(If::parse_else(lexer)?);
 
-        Ok(Case {
+        Ok(If {
             left,
             comparator,
             right,
@@ -125,11 +125,11 @@ impl<'a> Case<'a> {
         let token = lexer.next().unwrap()?;
         match &token.inner {
             Token::Else => Expr::parse(lexer),
-            Token::Case => {
-                let case = Case::parse_body(lexer)?;
-                Ok(token.map(|_| Expr::Case(case)))
+            Token::If => {
+                let body = If::parse_body(lexer)?;
+                Ok(token.map(|_| Expr::If(body)))
             }
-            inner => Err(token.error(&format!("expected 'case' or 'else' got {inner:?}")))?,
+            inner => Err(token.error(&format!("expected 'if' or 'else' got {inner:?}")))?,
         }
     }
 }
@@ -137,7 +137,7 @@ impl<'a> Case<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
     Value(Value<'a>),
-    Case(Case<'a>),
+    If(If<'a>),
 }
 
 impl<'a> Expr<'a> {
@@ -145,9 +145,9 @@ impl<'a> Expr<'a> {
         match Value::try_parse(lexer)? {
             Ok(value) => Ok(Ok(value.map(Expr::Value))),
             Err(token) => match token.inner {
-                Token::Case => {
-                    let case = Case::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::Case(case))))
+                Token::If => {
+                    let body = If::parse_body(lexer)?;
+                    Ok(Ok(token.map(|_| Expr::If(body))))
                 }
                 _ => Ok(Err(token)),
             },
@@ -156,7 +156,7 @@ impl<'a> Expr<'a> {
 
     fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         Self::try_parse(lexer)?
-            .map_err(|token| token.error(format!("expected 'case' or value got {:?}", token.inner)))
+            .map_err(|token| token.error(format!("expected 'if' or value got {:?}", token.inner)))
     }
 }
 
@@ -191,7 +191,7 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Vec<Loc<Top<'a>>>, String> {
                     return Ok(tops);
                 } else {
                     Err(token.error(format!(
-                        "expected 'let', 'case', literal or EOF got {:?}",
+                        "expected 'let', 'if', literal or EOF got {:?}",
                         token.inner
                     )))?
                 }
@@ -300,13 +300,13 @@ mod tests {
                 expected: Ok(vec![Top::Expr(Expr::Value(Value::Ident("foo"))).loc(1, 1)]),
             },
             Test {
-                input: b"case elevation > 0.5 foo else bar",
-                expected: Ok(vec![Top::Expr(Expr::Case(Case {
-                    left: Value::Ident("elevation").loc(1, 6),
-                    comparator: Comparator::GreaterThan.loc(1, 16),
-                    right: Value::Literal(Literal::Float("0.5")).loc(1, 18),
-                    yes: Box::new(Expr::Value(Value::Ident("foo")).loc(1, 22)),
-                    no: Box::new(Expr::Value(Value::Ident("bar")).loc(1, 31)),
+                input: b"if elevation > 0.5 foo else bar",
+                expected: Ok(vec![Top::Expr(Expr::If(If {
+                    left: Value::Ident("elevation").loc(1, 4),
+                    comparator: Comparator::GreaterThan.loc(1, 14),
+                    right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                    yes: Box::new(Expr::Value(Value::Ident("foo")).loc(1, 20)),
+                    no: Box::new(Expr::Value(Value::Ident("bar")).loc(1, 29)),
                 }))
                 .loc(1, 1)]),
             },

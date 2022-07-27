@@ -75,7 +75,7 @@ impl<'a> TryFrom<(ast::Value<'a>, &Definitions<'a>)> for Value {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Case {
+pub struct If {
     left: Float,
     comparator: ast::Comparator,
     right: Float,
@@ -83,7 +83,7 @@ pub struct Case {
     no: Box<Expr>,
 }
 
-impl Case {
+impl If {
     fn eval(&self, cell: Cell) -> Color {
         let left = match self.left {
             Float::Const(value) => value,
@@ -115,7 +115,7 @@ impl Case {
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Color(Color),
-    Case(Case),
+    If(If),
 }
 
 impl Expr {
@@ -126,7 +126,7 @@ impl Expr {
                 Ok(Value::Float(_)) => Err(expr.error("expected color got float")),
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
-            ast::Expr::Case(ast::Case {
+            ast::Expr::If(ast::If {
                 left,
                 comparator,
                 right,
@@ -148,7 +148,7 @@ impl Expr {
                 let yes = Box::new(Expr::compile(&*yes, defs)?);
                 let no = Box::new(Expr::compile(&*no, defs)?);
 
-                Ok(Expr::Case(Case {
+                Ok(Expr::If(If {
                     left,
                     comparator: comparator.inner,
                     right,
@@ -162,7 +162,7 @@ impl Expr {
     pub fn eval(&self, cell: Cell) -> Color {
         match self {
             Expr::Color(name) => name.clone(),
-            Expr::Case(case) => case.eval(cell),
+            Expr::If(expr) => expr.eval(cell),
         }
     }
 }
@@ -232,8 +232,8 @@ mod tests {
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
-            check(b"case elevation > 0.5 brown else cyan"),
-            Ok(Expr::Case(Case {
+            check(b"if elevation > 0.5 brown else cyan"),
+            Ok(Expr::If(If {
                 left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::GreaterThan,
                 right: Float::Const(0.5),
@@ -242,12 +242,12 @@ mod tests {
             }))
         );
         assert_eq!(
-            check(b"case elevation > 0.5 case humidity < 0.31 sandybrown else rosybrown else cyan"),
-            Ok(Expr::Case(Case {
+            check(b"if elevation > 0.5 if humidity < 0.31 sandybrown else rosybrown else cyan"),
+            Ok(Expr::If(If {
                 left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::GreaterThan,
                 right: Float::Const(0.5),
-                yes: Box::new(Expr::Case(Case {
+                yes: Box::new(Expr::If(If {
                     left: Float::Variable(Variable::Humidity),
                     comparator: ast::Comparator::LessThan,
                     right: Float::Const(0.31),
@@ -258,13 +258,13 @@ mod tests {
             }))
         );
         assert_eq!(
-            check(b"case elevation < 0.5 cyan case humidity < 0.31 sandybrown else rosybrown"),
-            Ok(Expr::Case(Case {
+            check(b"if elevation < 0.5 cyan if humidity < 0.31 sandybrown else rosybrown"),
+            Ok(Expr::If(If {
                 left: Float::Variable(Variable::Elevation),
                 comparator: ast::Comparator::LessThan,
                 right: Float::Const(0.5),
                 yes: Box::new(named_color("cyan")),
-                no: Box::new(Expr::Case(Case {
+                no: Box::new(Expr::If(If {
                     left: Float::Variable(Variable::Humidity),
                     comparator: ast::Comparator::LessThan,
                     right: Float::Const(0.31),
