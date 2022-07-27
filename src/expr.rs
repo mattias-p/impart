@@ -12,33 +12,37 @@ use crate::lexer::Loc;
 pub type Color = Srgb<u8>;
 
 pub struct Compiler<'a> {
-    defs: HashMap<&'a str, Loc<Value>>,
+    defs: HashMap<&'a str, Loc<Immediate>>,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Value, String> {
+    pub fn compile_literal(&self, value: &'a ast::Literal<'a>) -> Result<Immediate, String> {
         match value {
-            ast::Value::Literal(ast::Literal::Hexcode(s)) => {
+            ast::Literal::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 let color = Color::from_u32::<Argb>(argb);
-                Ok(Value::Color(color))
+                Ok(Immediate::Color(color))
             }
-            ast::Value::Literal(ast::Literal::Float(s)) => {
+            ast::Literal::Float(s) => {
                 let x = s.parse::<f32>().unwrap();
-                Ok(Value::Float(Float::Const(x)))
+                Ok(Immediate::Float(Float::Const(x)))
             }
-            ast::Value::Ident("elevation") => {
-                Ok(Value::Float(Float::Variable(Variable::Elevation)))
-            }
-            ast::Value::Ident("temperature") => {
-                Ok(Value::Float(Float::Variable(Variable::Temperature)))
-            }
-            ast::Value::Ident("humidity") => Ok(Value::Float(Float::Variable(Variable::Humidity))),
-            ast::Value::Ident(s) => match self.defs.get(s) {
-                Some(value) => Ok(value.inner),
-                None => match named::from_str(s) {
-                    Some(color) => Ok(Value::Color(color)),
-                    None => Err(format!("use of undeclared identifier")),
+        }
+    }
+
+    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate, String> {
+        match value {
+            ast::Value::Literal(literal) => self.compile_literal(literal),
+            ast::Value::Ident(s) => match *s {
+                "elevation" => Ok(Immediate::Float(Float::Variable(Variable::Elevation))),
+                "humidity" => Ok(Immediate::Float(Float::Variable(Variable::Humidity))),
+                "temperature" => Ok(Immediate::Float(Float::Variable(Variable::Temperature))),
+                _ => match self.defs.get(s) {
+                    Some(value) => Ok(value.inner),
+                    None => match named::from_str(s) {
+                        Some(color) => Ok(Immediate::Color(color)),
+                        None => Err(format!("use of undeclared identifier")),
+                    },
                 },
             },
         }
@@ -47,8 +51,8 @@ impl<'a> Compiler<'a> {
     pub fn compile_expr(&mut self, expr: &Loc<ast::Expr<'a>>) -> Result<Expr, String> {
         match expr.inner.clone() {
             ast::Expr::Value(value) => match self.compile_value(&value) {
-                Ok(Value::Color(color)) => Ok(Expr::Color(color)),
-                Ok(Value::Float(_)) => Err(expr.error("expected color got float")),
+                Ok(Immediate::Color(color)) => Ok(Expr::Color(color)),
+                Ok(Immediate::Float(_)) => Err(expr.error("expected color got float")),
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
             ast::Expr::Let(inner) => {
@@ -81,14 +85,14 @@ impl<'a> Compiler<'a> {
             }
             ast::Expr::If(inner) => {
                 let left = match self.compile_value(&inner.left.inner) {
-                    Ok(Value::Float(x)) => x,
-                    Ok(Value::Color(_)) => Err(inner.left.error("expected float got color"))?,
+                    Ok(Immediate::Float(x)) => x,
+                    Ok(Immediate::Color(_)) => Err(inner.left.error("expected float got color"))?,
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
                 let right = match self.compile_value(&inner.right.inner) {
-                    Ok(Value::Float(x)) => x,
-                    Ok(Value::Color(_)) => Err(inner.right.error("expected float got color"))?,
+                    Ok(Immediate::Float(x)) => x,
+                    Ok(Immediate::Color(_)) => Err(inner.right.error("expected float got color"))?,
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
@@ -121,7 +125,7 @@ pub enum Float {
 }
 
 #[derive(Clone, Copy)]
-pub enum Value {
+pub enum Immediate {
     Float(Float),
     Color(Color),
 }
