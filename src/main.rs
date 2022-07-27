@@ -86,7 +86,7 @@ fn main() {
     };
     let mut lexer = Lexer::new(expr);
     let ast = ast::parse(&mut lexer).unwrap();
-    let expr = expr::compile(ast).unwrap();
+    let expr = expr::compile(&ast).unwrap();
 
     let renderer = Renderer::new(expr);
 

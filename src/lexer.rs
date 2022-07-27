@@ -1,11 +1,13 @@
 use std::str::Utf8Error;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Loc<T> {
     pub line: usize,
     pub col: usize,
     pub inner: T,
 }
+
+impl<T> Copy for Loc<T> where T: Copy {}
 
 impl<T> Loc<T> {
     pub fn error<E: AsRef<str>>(&self, message: E) -> String {
@@ -21,13 +23,6 @@ impl<T> Loc<T> {
             col: self.col,
             inner: f(self.inner),
         }
-    }
-
-    pub fn try_map<F, U, E>(self, f: F) -> Result<Loc<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        Ok(f(self.inner)?.loc(self.line, self.col))
     }
 }
 

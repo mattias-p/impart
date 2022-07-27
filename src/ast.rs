@@ -9,7 +9,7 @@ pub enum Literal<'a> {
 }
 
 impl<'a> Literal<'a> {
-    fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
+    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         let token = lexer.next().unwrap()?;
         match token.inner {
             Token::Decimal(s) => Ok(Ok(token.map(|_| Literal::Float(s)))),
@@ -18,7 +18,7 @@ impl<'a> Literal<'a> {
         }
     }
 
-    fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
+    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         Self::try_parse(lexer)?
             .map_err(|token| token.error(format!("expected literal got {:?}", token.inner)))
     }
@@ -31,7 +31,7 @@ pub enum Value<'a> {
 }
 
 impl<'a> Value<'a> {
-    fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
+    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         match Literal::try_parse(lexer)? {
             Ok(literal) => Ok(Ok(literal.map(|inner| Value::Literal(inner)))),
             Err(token) => match token.inner {
@@ -41,22 +41,23 @@ impl<'a> Value<'a> {
         }
     }
 
-    fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
+    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         Self::try_parse(lexer)?
             .map_err(|token| token.error(format!("expected value got {:?}", token.inner)))
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Let<'a> {
-    pub ident: Loc<&'a str>,
-    pub literal: Loc<Literal<'a>>,
+    pub term: Loc<&'a str>,
+    pub definition: Loc<Value<'a>>,
+    pub expr: Loc<Expr<'a>>,
 }
 
 impl<'a> Let<'a> {
-    fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
+    pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let token = lexer.next().unwrap()?;
-        let ident = match token.inner {
+        let term = match token.inner {
             Token::Ident(s) => token.map(|_| s),
             inner => Err(token.error(format!("expected identifier got {inner:?}")))?,
         };
@@ -67,7 +68,7 @@ impl<'a> Let<'a> {
             inner => Err(token.error(&format!("expected '=' got {inner:?}")))?,
         };
 
-        let literal = Literal::parse(lexer)?;
+        let definition = Value::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
         match &token.inner {
@@ -75,7 +76,13 @@ impl<'a> Let<'a> {
             inner => Err(token.error(&format!("expected 'in' got {inner:?}")))?,
         };
 
-        Ok(Let { ident, literal })
+        let expr = Expr::parse(lexer)?;
+
+        Ok(Let {
+            term,
+            definition,
+            expr,
+        })
     }
 }
 
@@ -86,7 +93,9 @@ pub enum Comparator {
 }
 
 impl Comparator {
-    fn try_parse<'a>(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
+    pub fn try_parse<'a>(
+        lexer: &mut Lexer<'a>,
+    ) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         let token = lexer.next().unwrap()?;
         match token.inner {
             Token::LessThan => Ok(Ok(token.map(|_| Comparator::LessThan))),
@@ -95,7 +104,7 @@ impl Comparator {
         }
     }
 
-    fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
+    pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         Self::try_parse(lexer)?
             .map_err(|token| token.error(format!("expected comparator got {:?}", token.inner)))
     }
@@ -106,12 +115,12 @@ pub struct If<'a> {
     pub left: Loc<Value<'a>>,
     pub comparator: Loc<Comparator>,
     pub right: Loc<Value<'a>>,
-    pub branch_true: Box<Loc<Expr<'a>>>,
-    pub branch_false: Box<Loc<Expr<'a>>>,
+    pub branch_true: Loc<Expr<'a>>,
+    pub branch_false: Loc<Expr<'a>>,
 }
 
 impl<'a> If<'a> {
-    fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
+    pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let left = Value::parse(lexer)?;
         let comparator = Comparator::parse(lexer)?;
         let right = Value::parse(lexer)?;
@@ -122,11 +131,11 @@ impl<'a> If<'a> {
             inner => Err(token.error(&format!("expected 'then' got {inner:?}")))?,
         };
 
-        let branch_true = Box::new(Expr::parse(lexer)?);
+        let branch_true = Expr::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
         let branch_false = match &token.inner {
-            Token::Else => Box::new(Expr::parse(lexer)?),
+            Token::Else => Expr::parse(lexer)?,
             inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
         };
 
@@ -143,66 +152,44 @@ impl<'a> If<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
     Value(Value<'a>),
-    If(If<'a>),
+    If(Box<If<'a>>),
+    Let(Box<Let<'a>>),
 }
 
 impl<'a> Expr<'a> {
-    fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
+    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         match Value::try_parse(lexer)? {
             Ok(value) => Ok(Ok(value.map(Expr::Value))),
             Err(token) => match token.inner {
                 Token::If => {
                     let body = If::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::If(body))))
+                    Ok(Ok(token.map(|_| Expr::If(Box::new(body)))))
+                }
+                Token::Let => {
+                    let body = Let::parse_body(lexer)?;
+                    Ok(Ok(token.map(|_| Expr::Let(Box::new(body)))))
                 }
                 _ => Ok(Err(token)),
             },
         }
     }
 
-    fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
+    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         Self::try_parse(lexer)?
             .map_err(|token| token.error(format!("expected 'if' or value got {:?}", token.inner)))
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Top<'a> {
-    Let(Let<'a>),
-    Expr(Expr<'a>),
-}
-
-impl<'a> Top<'a> {
-    fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        match Expr::try_parse(lexer)? {
-            Ok(value) => Ok(Ok(value.map(Top::Expr))),
-            Err(token) => match token.inner {
-                Token::Let => {
-                    let l = Let::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Top::Let(l))))
-                }
-                _ => Ok(Err(token)),
-            },
-        }
-    }
-}
-
-pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Vec<Loc<Top<'a>>>, String> {
-    let mut tops = Vec::new();
-    loop {
-        match Top::try_parse(lexer)? {
-            Ok(top) => tops.push(top),
-            Err(token) => {
-                if token.inner == Token::EOF {
-                    return Ok(tops);
-                } else {
-                    Err(token.error(format!(
-                        "expected 'let', 'if', literal or EOF got {:?}",
-                        token.inner
-                    )))?
-                }
-            }
-        }
+pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
+    let expr = Expr::parse(lexer)?;
+    let token = lexer.next().unwrap()?;
+    if token.inner == Token::EOF {
+        return Ok(expr);
+    } else {
+        Err(token.error(format!(
+            "expected 'let', 'if', literal or EOF got {:?}",
+            token.inner
+        )))?
     }
 }
 
@@ -230,10 +217,7 @@ mod tests {
                 //1234567
                 b"#123456",
             )),
-            Ok(vec![Top::Expr(Expr::Value(Value::Literal(
-                Literal::Hexcode("123456")
-            )))
-            .loc(1, 1)]),
+            Ok(Expr::Value(Value::Literal(Literal::Hexcode("123456"))).loc(1, 1)),
         );
     }
 
@@ -244,7 +228,7 @@ mod tests {
                 //123
                 b"foo",
             )),
-            Ok(vec![Top::Expr(Expr::Value(Value::Ident("foo"))).loc(1, 1)]),
+            Ok(Expr::Value(Value::Ident("foo")).loc(1, 1)),
         );
     }
 
@@ -252,15 +236,16 @@ mod tests {
     fn let_x() {
         assert_eq!(
             parse(&mut Lexer::new(
-                //         1
-                //1234567890123456
-                b"let pi = 3.14 in",
+                //         1         2
+                //123456789012345678901234
+                b"let pi = 3.14 in foo",
             )),
-            Ok(vec![Top::Let(Let {
-                ident: "pi".loc(1, 5),
-                literal: Literal::Float("3.14").loc(1, 10),
-            })
-            .loc(1, 1),]),
+            Ok(Expr::Let(Box::new(Let {
+                term: "pi".loc(1, 5),
+                definition: Value::Literal(Literal::Float("3.14")).loc(1, 10),
+                expr: Expr::Value(Value::Ident("foo")).loc(1, 18),
+            }))
+            .loc(1, 1)),
         );
     }
 
@@ -269,21 +254,20 @@ mod tests {
         assert_eq!(
             parse(&mut Lexer::new(
                 //         1         2         3
-                //1234567890123456789012345678901234
-                b"let pi = 3.14 in let tau = 6.28 in",
+                //12345678901234567890123456789012345678
+                b"let pi = 3.14 in let tau = 6.28 in foo",
             )),
-            Ok(vec![
-                Top::Let(Let {
-                    ident: "pi".loc(1, 5),
-                    literal: Literal::Float("3.14").loc(1, 10),
-                })
-                .loc(1, 1),
-                Top::Let(Let {
-                    ident: "tau".loc(1, 22),
-                    literal: Literal::Float("6.28").loc(1, 28),
-                })
+            Ok(Expr::Let(Box::new(Let {
+                term: "pi".loc(1, 5),
+                definition: Value::Literal(Literal::Float("3.14")).loc(1, 10),
+                expr: Expr::Let(Box::new(Let {
+                    term: "tau".loc(1, 22),
+                    definition: Value::Literal(Literal::Float("6.28")).loc(1, 28),
+                    expr: Expr::Value(Value::Ident("foo")).loc(1, 36),
+                }))
                 .loc(1, 18),
-            ]),
+            }))
+            .loc(1, 1)),
         );
     }
 
@@ -295,14 +279,14 @@ mod tests {
                 //123456789012345678901234567890123456789
                 b"if elevation > 0.5 then brown else cyan",
             )),
-            Ok(vec![Top::Expr(Expr::If(If {
+            Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                branch_true: Box::new(Expr::Value(Value::Ident("brown")).loc(1, 25)),
-                branch_false: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 36)),
+                branch_true: Expr::Value(Value::Ident("brown")).loc(1, 25),
+                branch_false: Expr::Value(Value::Ident("cyan")).loc(1, 36),
             }))
-            .loc(1, 1)]),
+            .loc(1, 1)),
         );
     }
 
@@ -314,23 +298,21 @@ mod tests {
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
             )),
-            Ok(vec![Top::Expr(Expr::If(If {
+            Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                branch_true: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 25)),
-                branch_false: Box::new(
-                    Expr::If(If {
+                branch_true: Expr::Value(Value::Ident("cyan")).loc(1, 25),
+                branch_false: Expr::If(Box::new(If {
                         left: Value::Ident("humidity").loc(1, 38),
                         comparator: Comparator::LessThan.loc(1, 47),
                         right: Value::Literal(Literal::Float("0.31")).loc(1, 49),
-                        branch_true: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 59)),
-                        branch_false: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 75)),
-                    })
+                        branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 59),
+                        branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 75),
+                    }))
                     .loc(1, 35),
-                ),
             }))
-            .loc(1, 1)]),
+            .loc(1, 1)),
         );
     }
 
@@ -342,23 +324,43 @@ mod tests {
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
             )),
-            Ok(vec![Top::Expr(Expr::If(If {
+            Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                branch_true: Box::new(
-                    Expr::If(If {
+                branch_true: Expr::If(Box::new(If {
                         left: Value::Ident("humidity").loc(1, 28),
                         comparator: Comparator::LessThan.loc(1, 37),
                         right: Value::Literal(Literal::Float("0.31")).loc(1, 39),
-                        branch_true: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 49)),
-                        branch_false: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 65)),
-                    })
+                        branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 49),
+                        branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 65),
+                    }))
                     .loc(1, 25),
-                ),
-                branch_false: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 80)),
+                branch_false: Expr::Value(Value::Ident("cyan")).loc(1, 80),
             }))
-            .loc(1, 1)]),
+            .loc(1, 1)),
+        );
+    }
+
+    #[test]
+    fn wip() {
+        assert_eq!(
+            parse(&mut Lexer::new(
+                //         1         2         3           1         2         3
+                //123456789012345678901234567890  1234567890123456789012345678901234  1234567
+                b"let peak = #A38983 in // brown\nlet mountain = #805C54 in // brown\n#123456"
+            )),
+            Ok(Expr::Let(Box::new(Let {
+                term: "peak".loc(1, 5),
+                definition: Value::Literal(Literal::Hexcode("A38983")).loc(1, 12),
+                expr: Expr::Let(Box::new(Let {
+                    term: "mountain".loc(2, 5),
+                    definition: Value::Literal(Literal::Hexcode("805C54")).loc(2, 16),
+                    expr: Expr::Value(Value::Literal(Literal::Hexcode("123456"))).loc(3, 1),
+                }))
+                .loc(2, 1),
+            }))
+            .loc(1, 1)),
         );
     }
 }
