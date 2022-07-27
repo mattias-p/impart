@@ -64,10 +64,16 @@ impl<'a> Let<'a> {
         let token = lexer.next().unwrap()?;
         match &token.inner {
             Token::EqualSign => {}
-            inner => Err(token.error(&format!("expected equal-sign got {inner:?}")))?,
+            inner => Err(token.error(&format!("expected '=' got {inner:?}")))?,
         };
 
         let literal = Literal::parse(lexer)?;
+
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
+            Token::In => {}
+            inner => Err(token.error(&format!("expected 'in' got {inner:?}")))?,
+        };
 
         Ok(Let { ident, literal })
     }
@@ -100,8 +106,8 @@ pub struct If<'a> {
     pub left: Loc<Value<'a>>,
     pub comparator: Loc<Comparator>,
     pub right: Loc<Value<'a>>,
-    pub yes: Box<Loc<Expr<'a>>>,
-    pub no: Box<Loc<Expr<'a>>>,
+    pub branch_true: Box<Loc<Expr<'a>>>,
+    pub branch_false: Box<Loc<Expr<'a>>>,
 }
 
 impl<'a> If<'a> {
@@ -109,10 +115,17 @@ impl<'a> If<'a> {
         let left = Value::parse(lexer)?;
         let comparator = Comparator::parse(lexer)?;
         let right = Value::parse(lexer)?;
-        let yes = Box::new(Expr::parse(lexer)?);
 
         let token = lexer.next().unwrap()?;
-        let no = match &token.inner {
+        match &token.inner {
+            Token::Then => {}
+            inner => Err(token.error(&format!("expected 'then' got {inner:?}")))?,
+        };
+
+        let branch_true = Box::new(Expr::parse(lexer)?);
+
+        let token = lexer.next().unwrap()?;
+        let branch_false = match &token.inner {
             Token::Else => Box::new(Expr::parse(lexer)?),
             inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
         };
@@ -121,8 +134,8 @@ impl<'a> If<'a> {
             left,
             comparator,
             right,
-            yes,
-            no,
+            branch_true,
+            branch_false,
         })
     }
 }
@@ -240,8 +253,8 @@ mod tests {
         assert_eq!(
             parse(&mut Lexer::new(
                 //         1
-                //1234567890123
-                b"let pi = 3.14",
+                //1234567890123456
+                b"let pi = 3.14 in",
             )),
             Ok(vec![Top::Let(Let {
                 ident: "pi".loc(1, 5),
@@ -255,9 +268,9 @@ mod tests {
     fn let_x_let_y() {
         assert_eq!(
             parse(&mut Lexer::new(
-                //         1         2
-                //1234567890123456789012345678
-                b"let pi = 3.14 let tau = 6.28",
+                //         1         2         3
+                //1234567890123456789012345678901234
+                b"let pi = 3.14 in let tau = 6.28 in",
             )),
             Ok(vec![
                 Top::Let(Let {
@@ -266,10 +279,10 @@ mod tests {
                 })
                 .loc(1, 1),
                 Top::Let(Let {
-                    ident: "tau".loc(1, 19),
-                    literal: Literal::Float("6.28").loc(1, 25),
+                    ident: "tau".loc(1, 22),
+                    literal: Literal::Float("6.28").loc(1, 28),
                 })
-                .loc(1, 15),
+                .loc(1, 18),
             ]),
         );
     }
@@ -278,16 +291,16 @@ mod tests {
     fn if_a_x_else_y() {
         assert_eq!(
             parse(&mut Lexer::new(
-                //         1         2         3         4         5         6         7
-                //1234567890123456789012345678901234567890123456789012345678901234567890123
-                b"if elevation > 0.5 brown else cyan",
+                //         1         2         3
+                //123456789012345678901234567890123456789
+                b"if elevation > 0.5 then brown else cyan",
             )),
             Ok(vec![Top::Expr(Expr::If(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                yes: Box::new(Expr::Value(Value::Ident("brown")).loc(1, 20)),
-                no: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 31)),
+                branch_true: Box::new(Expr::Value(Value::Ident("brown")).loc(1, 25)),
+                branch_false: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 36)),
             }))
             .loc(1, 1)]),
         );
@@ -297,24 +310,24 @@ mod tests {
     fn if_a_x_else_if_b_y_else_z() {
         assert_eq!(
             parse(&mut Lexer::new(
-                //         1         2         3         4         5         6         7
-                //1234567890123456789012345678901234567890123456789012345678901234567890123
-                b"if elevation > 0.5 cyan else if humidity < 0.31 sandybrown else rosybrown"
+                //         1         2         3         4         5         6         7         8
+                //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
+                b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
             )),
             Ok(vec![Top::Expr(Expr::If(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                yes: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 20)),
-                no: Box::new(
+                branch_true: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 25)),
+                branch_false: Box::new(
                     Expr::If(If {
-                        left: Value::Ident("humidity").loc(1, 33),
-                        comparator: Comparator::LessThan.loc(1, 42),
-                        right: Value::Literal(Literal::Float("0.31")).loc(1, 44),
-                        yes: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 49)),
-                        no: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 65)),
+                        left: Value::Ident("humidity").loc(1, 38),
+                        comparator: Comparator::LessThan.loc(1, 47),
+                        right: Value::Literal(Literal::Float("0.31")).loc(1, 49),
+                        branch_true: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 59)),
+                        branch_false: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 75)),
                     })
-                    .loc(1, 30),
+                    .loc(1, 35),
                 ),
             }))
             .loc(1, 1)]),
@@ -325,25 +338,25 @@ mod tests {
     fn if_a_if_b_x_else_y_else_z() {
         assert_eq!(
             parse(&mut Lexer::new(
-                //         1         2         3         4         5         6         7
-                //123456789012345678901234567890123456789012345678901234567890123456789012345678
-                b"if elevation > 0.5 if humidity < 0.31 sandybrown else rosybrown else cyan",
+                //         1         2         3         4         5         6         7         8
+                //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
+                b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
             )),
             Ok(vec![Top::Expr(Expr::If(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
-                yes: Box::new(
+                branch_true: Box::new(
                     Expr::If(If {
-                        left: Value::Ident("humidity").loc(1, 23),
-                        comparator: Comparator::LessThan.loc(1, 32),
-                        right: Value::Literal(Literal::Float("0.31")).loc(1, 34),
-                        yes: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 39)),
-                        no: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 55)),
+                        left: Value::Ident("humidity").loc(1, 28),
+                        comparator: Comparator::LessThan.loc(1, 37),
+                        right: Value::Literal(Literal::Float("0.31")).loc(1, 39),
+                        branch_true: Box::new(Expr::Value(Value::Ident("sandybrown")).loc(1, 49)),
+                        branch_false: Box::new(Expr::Value(Value::Ident("rosybrown")).loc(1, 65)),
                     })
-                    .loc(1, 20),
+                    .loc(1, 25),
                 ),
-                no: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 70)),
+                branch_false: Box::new(Expr::Value(Value::Ident("cyan")).loc(1, 80)),
             }))
             .loc(1, 1)]),
         );

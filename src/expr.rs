@@ -79,8 +79,8 @@ pub struct If {
     left: Float,
     comparator: ast::Comparator,
     right: Float,
-    yes: Box<Expr>,
-    no: Box<Expr>,
+    branch_true: Box<Expr>,
+    branch_false: Box<Expr>,
 }
 
 impl If {
@@ -105,9 +105,9 @@ impl If {
         };
 
         if cond {
-            self.yes.eval(cell)
+            self.branch_true.eval(cell)
         } else {
-            self.no.eval(cell)
+            self.branch_false.eval(cell)
         }
     }
 }
@@ -130,8 +130,8 @@ impl Expr {
                 left,
                 comparator,
                 right,
-                yes,
-                no,
+                branch_true,
+                branch_false,
             }) => {
                 let left = match (left.inner, defs).try_into() {
                     Ok(Value::Float(x)) => x,
@@ -145,15 +145,15 @@ impl Expr {
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
-                let yes = Box::new(Expr::compile(&*yes, defs)?);
-                let no = Box::new(Expr::compile(&*no, defs)?);
+                let branch_true = Box::new(Expr::compile(&*branch_true, defs)?);
+                let branch_false = Box::new(Expr::compile(&*branch_false, defs)?);
 
                 Ok(Expr::If(If {
                     left,
                     comparator: comparator.inner,
                     right,
-                    yes,
-                    no,
+                    branch_true,
+                    branch_false,
                 }))
             }
         }
@@ -232,11 +232,11 @@ mod tests {
             Ok(Expr::Color(Srgb::from_u32::<Argb>(0xfc9630)))
         );
         assert_eq!(
-            check(b"let brown = #123456\nbrown"),
+            check(b"let brown = #123456 in\nbrown"),
             Err("cannot redefine 'brown' at 1:5 (predefined)".to_string())
         );
         assert_eq!(
-            check(b"let foo = #123456\nlet foo = #654321\nfoo"),
+            check(b"let foo = #123456 in\nlet foo = #654321 in\nfoo"),
             Err("cannot redefine 'foo' at 2:5 (first defined at 1:5)".to_string())
         );
     }
