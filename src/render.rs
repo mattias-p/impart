@@ -2,14 +2,15 @@ use palette::Pixel;
 
 use crate::expr::Expr;
 use crate::expr::Immediate;
+use crate::expr::Variable;
 use crate::generate::Cell;
 
 pub struct Renderer {
-    expr: Expr,
+    expr: Expr<Variable>,
 }
 
 impl Renderer {
-    pub fn new(expr: Expr) -> Self {
+    pub fn new(expr: Expr<Variable>) -> Self {
         Renderer { expr }
     }
 

@@ -11,12 +11,15 @@ use crate::lexer::Loc;
 
 pub type Color = Srgb<u8>;
 
+#[derive(Debug)]
+pub enum Never {}
+
 pub struct Compiler<'a> {
-    defs: HashMap<&'a str, Loc<Immediate>>,
+    defs: HashMap<&'a str, Loc<Immediate<Variable>>>,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn compile_literal(&self, value: &'a ast::Literal<'a>) -> Result<Immediate, String> {
+    pub fn compile_literal(&self, value: &'a ast::Literal<'a>) -> Result<Immediate<Variable>, String> {
         match value {
             ast::Literal::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
@@ -30,7 +33,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate, String> {
+    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate<Variable>, String> {
         match value {
             ast::Value::Literal(literal) => self.compile_literal(literal),
             ast::Value::Ident(s) => match *s {
@@ -48,7 +51,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile_expr(&mut self, expr: &Loc<ast::Expr<'a>>) -> Result<Expr, String> {
+    pub fn compile_expr(&mut self, expr: &Loc<ast::Expr<'a>>) -> Result<Expr<Variable>, String> {
         match expr.inner.clone() {
             ast::Expr::Value(value) => match self.compile_value(&value) {
                 Ok(Immediate::Color(color)) => Ok(Expr::Immediate(Immediate::Color(color))),
@@ -119,42 +122,59 @@ pub enum Variable {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Float {
+pub enum Float<V> {
     Const(f32),
-    Variable(Variable),
+    Variable(V),
+}
+
+impl Float<Variable> {
+    pub fn eval(&self, cell: Cell) -> Float<Never> {
+        match self {
+            Float::Const(value) => Float::Const(*value),
+            Float::Variable(Variable::Elevation) => Float::Const(cell.elevation),
+            Float::Variable(Variable::Temperature) => Float::Const(cell.temperature),
+            Float::Variable(Variable::Humidity) => Float::Const(cell.humidity),
+        }
+    }
+}
+
+impl<V> Float<V> {
+    pub fn as_const(&self) -> Option<f32> {
+        match self {
+            Float::Const(value) => Some(*value),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Immediate {
-    Float(Float),
+pub enum Immediate<V> {
+    Float(Float<V>),
     Color(Color),
 }
 
-#[derive(Debug, PartialEq)]
-pub struct If {
-    left: Float,
-    comparator: ast::Comparator,
-    right: Float,
-    branch_true: Expr,
-    branch_false: Expr,
+impl Immediate<Variable> {
+    pub fn eval(&self, cell: Cell) -> Immediate<Never> {
+        match self {
+            Immediate::Float(value) => Immediate::Float(value.eval(cell)),
+            Immediate::Color(value) => Immediate::Color(*value),
+        }
+    }
 }
 
-impl If {
-    fn eval(&self, cell: Cell) -> Immediate {
-        let left = match self.left {
-            Float::Const(value) => value,
-            Float::Variable(Variable::Elevation) => cell.elevation,
-            Float::Variable(Variable::Temperature) => cell.temperature,
-            Float::Variable(Variable::Humidity) => cell.humidity,
-        };
+#[derive(Debug, PartialEq)]
+pub struct If<V> {
+    left: Float<V>,
+    comparator: ast::Comparator,
+    right: Float<V>,
+    branch_true: Expr<V>,
+    branch_false: Expr<V>,
+}
 
-        let right = match self.right {
-            Float::Const(value) => value,
-            Float::Variable(Variable::Elevation) => cell.elevation,
-            Float::Variable(Variable::Temperature) => cell.temperature,
-            Float::Variable(Variable::Humidity) => cell.humidity,
-        };
-
+impl If<Variable> {
+    fn eval(&self, cell: Cell) -> Immediate<Never> {
+        let left = self.left.eval(cell).as_const().unwrap();
+        let right = self.right.eval(cell).as_const().unwrap();
         let cond = match self.comparator {
             ast::Comparator::GreaterThan => left > right,
             ast::Comparator::LessThan => left < right,
@@ -169,21 +189,21 @@ impl If {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Expr {
-    Immediate(Immediate),
-    If(Box<If>),
+pub enum Expr<V> {
+    Immediate(Immediate<V>),
+    If(Box<If<V>>),
 }
 
-impl Expr {
-    pub fn eval(&self, cell: Cell) -> Immediate {
+impl Expr<Variable> {
+    pub fn eval(&self, cell: Cell) -> Immediate<Never> {
         match self {
-            Expr::Immediate(imm) => imm.clone(),
+            Expr::Immediate(imm) => imm.eval(cell),
             Expr::If(expr) => expr.eval(cell),
         }
     }
 }
 
-pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<Expr, String> {
+pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<Expr<Variable>, String> {
     let mut compiler = Compiler {
         defs: HashMap::new(),
     };
