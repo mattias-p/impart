@@ -19,23 +19,17 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn compile_literal(&self, value: &'a ast::Literal<'a>) -> Result<Immediate<Variable>, String> {
+    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate<Variable>, String> {
         match value {
-            ast::Literal::Hexcode(s) => {
+            ast::Value::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 let color = Color::from_u32::<Argb>(argb);
                 Ok(Immediate::Color(color))
             }
-            ast::Literal::Float(s) => {
+            ast::Value::Float(s) => {
                 let x = s.parse::<f32>().unwrap();
                 Ok(Immediate::Float(Float::Const(x)))
             }
-        }
-    }
-
-    pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate<Variable>, String> {
-        match value {
-            ast::Value::Literal(literal) => self.compile_literal(literal),
             ast::Value::Ident(s) => match *s {
                 "elevation" => Ok(Immediate::Float(Float::Variable(Variable::Elevation))),
                 "humidity" => Ok(Immediate::Float(Float::Variable(Variable::Humidity))),
@@ -216,13 +210,13 @@ mod tests {
 
     use crate::lexer::Lexer;
 
-    fn check(corpus: &[u8]) -> Result<Expr, String> {
+    fn check(corpus: &[u8]) -> Result<Expr<Variable>, String> {
         let mut lexer = Lexer::new(corpus);
         let ast = ast::parse(&mut lexer)?;
         compile(&ast)
     }
 
-    fn named_color(name: &str) -> Expr {
+    fn named_color(name: &str) -> Expr<Variable> {
         Expr::Immediate(Immediate::Color(named::from_str(name).unwrap()))
     }
 
@@ -231,7 +225,9 @@ mod tests {
         assert_eq!(check(b"brown"), Ok(named_color("brown")));
         assert_eq!(
             check(b"#fc9630"),
-            Ok(Expr::Immediate(Immediate::Color(Srgb::from_u32::<Argb>(0xfc9630))))
+            Ok(Expr::Immediate(Immediate::Color(Srgb::from_u32::<Argb>(
+                0xfc9630
+            ))))
         );
         assert_eq!(
             check(b"let brown = #123456 in\nbrown"),

@@ -3,41 +3,20 @@ use crate::lexer::Loc;
 use crate::lexer::Token;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Literal<'a> {
+pub enum Value<'a> {
     Float(&'a str),
     Hexcode(&'a str),
-}
-
-impl<'a> Literal<'a> {
-    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        let token = lexer.next().unwrap()?;
-        match token.inner {
-            Token::Decimal(s) => Ok(Ok(token.map(|_| Literal::Float(s)))),
-            Token::Hexcode(s) => Ok(Ok(token.map(|_| Literal::Hexcode(s)))),
-            _ => Ok(Err(token)),
-        }
-    }
-
-    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        Self::try_parse(lexer)?
-            .map_err(|token| token.error(format!("expected literal got {:?}", token.inner)))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Value<'a> {
-    Literal(Literal<'a>),
     Ident(&'a str),
 }
 
 impl<'a> Value<'a> {
     pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        match Literal::try_parse(lexer)? {
-            Ok(literal) => Ok(Ok(literal.map(|inner| Value::Literal(inner)))),
-            Err(token) => match token.inner {
-                Token::Ident(s) => Ok(Ok(token.map(|_| Value::Ident(s)))),
-                _ => Ok(Err(token)),
-            },
+        let token = lexer.next().unwrap()?;
+        match token.inner {
+            Token::Decimal(s) => Ok(Ok(token.map(|_| Value::Float(s)))),
+            Token::Hexcode(s) => Ok(Ok(token.map(|_| Value::Hexcode(s)))),
+            Token::Ident(s) => Ok(Ok(token.map(|_| Value::Ident(s)))),
+            _ => Ok(Err(token)),
         }
     }
 
@@ -200,13 +179,13 @@ mod tests {
     use crate::lexer::LocExt;
 
     #[test]
-    fn literal() {
+    fn float() {
         assert_eq!(
-            Literal::parse(&mut Lexer::new(
+            Value::parse(&mut Lexer::new(
                 //1234567
                 b"3.14",
             )),
-            Ok(Literal::Float("3.14").loc(1, 1)),
+            Ok(Value::Float("3.14").loc(1, 1)),
         );
     }
 
@@ -217,7 +196,7 @@ mod tests {
                 //1234567
                 b"#123456",
             )),
-            Ok(Expr::Value(Value::Literal(Literal::Hexcode("123456"))).loc(1, 1)),
+            Ok(Expr::Value(Value::Hexcode("123456")).loc(1, 1)),
         );
     }
 
@@ -242,7 +221,7 @@ mod tests {
             )),
             Ok(Expr::Let(Box::new(Let {
                 term: "pi".loc(1, 5),
-                definition: Value::Literal(Literal::Float("3.14")).loc(1, 10),
+                definition: Value::Float("3.14").loc(1, 10),
                 expr: Expr::Value(Value::Ident("foo")).loc(1, 18),
             }))
             .loc(1, 1)),
@@ -259,10 +238,10 @@ mod tests {
             )),
             Ok(Expr::Let(Box::new(Let {
                 term: "pi".loc(1, 5),
-                definition: Value::Literal(Literal::Float("3.14")).loc(1, 10),
+                definition: Value::Float("3.14").loc(1, 10),
                 expr: Expr::Let(Box::new(Let {
                     term: "tau".loc(1, 22),
-                    definition: Value::Literal(Literal::Float("6.28")).loc(1, 28),
+                    definition: Value::Float("6.28").loc(1, 28),
                     expr: Expr::Value(Value::Ident("foo")).loc(1, 36),
                 }))
                 .loc(1, 18),
@@ -282,7 +261,7 @@ mod tests {
             Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                right: Value::Float("0.5").loc(1, 16),
                 branch_true: Expr::Value(Value::Ident("brown")).loc(1, 25),
                 branch_false: Expr::Value(Value::Ident("cyan")).loc(1, 36),
             }))
@@ -301,12 +280,12 @@ mod tests {
             Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                right: Value::Float("0.5").loc(1, 16),
                 branch_true: Expr::Value(Value::Ident("cyan")).loc(1, 25),
                 branch_false: Expr::If(Box::new(If {
                         left: Value::Ident("humidity").loc(1, 38),
                         comparator: Comparator::LessThan.loc(1, 47),
-                        right: Value::Literal(Literal::Float("0.31")).loc(1, 49),
+                        right: Value::Float("0.31").loc(1, 49),
                         branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 59),
                         branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 75),
                     }))
@@ -327,11 +306,11 @@ mod tests {
             Ok(Expr::If(Box::new(If {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Value::Literal(Literal::Float("0.5")).loc(1, 16),
+                right: Value::Float("0.5").loc(1, 16),
                 branch_true: Expr::If(Box::new(If {
                         left: Value::Ident("humidity").loc(1, 28),
                         comparator: Comparator::LessThan.loc(1, 37),
-                        right: Value::Literal(Literal::Float("0.31")).loc(1, 39),
+                        right: Value::Float("0.31").loc(1, 39),
                         branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 49),
                         branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 65),
                     }))
@@ -352,11 +331,11 @@ mod tests {
             )),
             Ok(Expr::Let(Box::new(Let {
                 term: "peak".loc(1, 5),
-                definition: Value::Literal(Literal::Hexcode("A38983")).loc(1, 12),
+                definition: Value::Hexcode("A38983").loc(1, 12),
                 expr: Expr::Let(Box::new(Let {
                     term: "mountain".loc(2, 5),
-                    definition: Value::Literal(Literal::Hexcode("805C54")).loc(2, 16),
-                    expr: Expr::Value(Value::Literal(Literal::Hexcode("123456"))).loc(3, 1),
+                    definition: Value::Hexcode("805C54").loc(2, 16),
+                    expr: Expr::Value(Value::Hexcode("123456")).loc(3, 1),
                 }))
                 .loc(2, 1),
             }))
