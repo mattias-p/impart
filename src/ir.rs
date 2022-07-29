@@ -86,6 +86,11 @@ impl TypeOp for BoolOp {
         }
     }
 }
+impl BoolOp {
+    fn into_anyexpr(self) -> AnyExpr {
+        AnyExpr::Bool(Expr::TypeOp(Box::new(self)))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Color;
@@ -130,6 +135,11 @@ impl TypeOp for FloatOp {
             FloatOp::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
             FloatOp::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
         }
+    }
+}
+impl FloatOp {
+    fn into_anyexpr(self) -> AnyExpr {
+        AnyExpr::Float(Expr::TypeOp(Box::new(self)))
     }
 }
 
@@ -228,21 +238,15 @@ impl<'a> SymTable<'a> {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
                 None => match *s {
                     "elevation" => Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
-                            Variable::Elevation,
-                        )))),
+                        FloatOp::Variable(Variable::Elevation).into_anyexpr(),
                         Source::Prelude,
                     )),
                     "humidity" => Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
-                            Variable::Humidity,
-                        )))),
+                        FloatOp::Variable(Variable::Humidity).into_anyexpr(),
                         Source::Prelude,
                     )),
                     "temperature" => Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
-                            Variable::Temperature,
-                        )))),
+                        FloatOp::Variable(Variable::Temperature).into_anyexpr(),
                         Source::Prelude,
                     )),
                     _ => Err(expr.error(format!("use of undeclared identifier"))),
@@ -256,17 +260,11 @@ impl<'a> SymTable<'a> {
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Not { rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::Not { rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Neg { rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((FloatOp::Neg { rhs }.into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such unary operator"),
             },
@@ -274,74 +272,47 @@ impl<'a> SymTable<'a> {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Mul { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((FloatOp::Mul { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Solidus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Div { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((FloatOp::Div { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Plus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Add { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((FloatOp::Add { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Sub { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((FloatOp::Sub { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Less => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Less { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::Less { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Greater => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Greater { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::Greater { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::And => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::And { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::And { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Xor => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Xor { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::Xor { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Or => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((
-                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Or { lhs, rhs }))),
-                        Source::Inline,
-                    ))
+                    Ok((BoolOp::Or { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such binary operator"),
             },
