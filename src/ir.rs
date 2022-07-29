@@ -4,6 +4,7 @@ use palette::rgb::channels::Argb;
 use palette::Srgb;
 
 use crate::ast;
+use crate::generate::Cell;
 use crate::lexer::Loc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,8 +48,13 @@ impl fmt::Display for TyKind {
 }
 
 pub trait Type {
-    type Repr: Clone + fmt::Debug + PartialEq;
-    type Op: Clone + fmt::Debug + PartialEq;
+    type Repr: Clone + Copy + fmt::Debug + PartialEq;
+    type Op: TypeOp<Repr=Self::Repr>;
+}
+
+pub trait TypeOp: Clone + fmt::Debug + PartialEq {
+    type Repr;
+    fn eval(&self, cell: Cell) -> Self::Repr;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +74,15 @@ pub enum BoolOp {
         rhs: TyExpr<Float>,
     },
 }
+impl TypeOp for BoolOp {
+    type Repr = bool;
+    fn eval(&self, cell: Cell) -> Self::Repr {
+        match self {
+            BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
+            BoolOp::Less{ lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Color;
@@ -77,6 +92,12 @@ impl Type for Color {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColorOp {}
+impl TypeOp for ColorOp {
+    type Repr = Srgb<u8>;
+    fn eval(&self, _cell: Cell) -> Self::Repr {
+        unimplemented!()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Float;
@@ -85,7 +106,19 @@ impl Type for Float {
     type Op = FloatOp;
 }
 #[derive(Clone, Debug, PartialEq)]
-pub enum FloatOp {}
+pub enum FloatOp {
+    Variable(Variable),
+}
+impl TypeOp for FloatOp {
+    type Repr = f32;
+    fn eval(&self, cell: Cell) -> Self::Repr {
+        match self {
+            FloatOp::Variable(Variable::Elevation) => cell.elevation,
+            FloatOp::Variable(Variable::Humidity) => cell.humidity,
+            FloatOp::Variable(Variable::Temperature) => cell.temperature,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum AnyExpr {
@@ -108,8 +141,23 @@ impl AnyExpr {
 pub enum TyExpr<T: Type> {
     Imm(T::Repr),
     IfThenElse(Box<IfThenElse<T>>),
-    Op(Box<T::Op>),
-    Variable(Variable),
+    TypeOp(T::Op),
+}
+
+impl<T: Type> TyExpr<T> {
+    pub fn eval(&self, cell: Cell) -> T::Repr {
+        match self {
+            TyExpr::Imm(value) => *value,
+            TyExpr::IfThenElse(if_then_else) => {
+                if if_then_else.cond.eval(cell) {
+                    if_then_else.if_true.eval(cell)
+                } else {
+                    if_then_else.if_false.eval(cell)
+                }
+            }
+            TyExpr::TypeOp(op) => op.eval(cell),
+        }
+    }
 }
 
 trait Parser<'a, T: Type> {
@@ -230,15 +278,15 @@ impl<'a> Compiler<'a> {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
                 None => match s {
                     "elevation" => Ok((
-                        AnyExpr::Float(TyExpr::Variable(Variable::Elevation)),
+                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Elevation))),
                         Source::Prelude,
                     )),
                     "humidity" => Ok((
-                        AnyExpr::Float(TyExpr::Variable(Variable::Humidity)),
+                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Humidity))),
                         Source::Prelude,
                     )),
                     "temperature" => Ok((
-                        AnyExpr::Float(TyExpr::Variable(Variable::Temperature)),
+                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Temperature))),
                         Source::Prelude,
                     )),
                     _ => Err(value.error(format!("use of undeclared identifier"))),
@@ -267,7 +315,7 @@ impl<'a> Compiler<'a> {
                 let cond = inner
                     .cond
                     .comparator
-                    .map(|_| TyExpr::Op(Box::new(op)))
+                    .map(|_| TyExpr::TypeOp(op))
                     .inner;
                 let (if_true, _) = self.untyped_ast_expr(&inner.if_true)?;
                 let (if_false, _) = self.untyped_ast_expr(&inner.if_false)?;
