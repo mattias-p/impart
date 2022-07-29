@@ -14,6 +14,14 @@ fn expr_bp<'a>(
         Token::Decimal(s) => token.map(|_| Expr::Atom(Atom::Float(s))),
         Token::Hexcode(s) => token.map(|_| Expr::Atom(Atom::Hexcode(s))),
         Token::Ident(s) => token.map(|_| Expr::Atom(Atom::Ident(s))),
+        Token::If => {
+            let body = IfElse::parse_body(lexer)?;
+            token.map(|_| Expr::IfElse(Box::new(body)))
+        }
+        Token::Let => {
+            let body = LetIn::parse_body(lexer)?;
+            token.map(|_| Expr::LetIn(Box::new(body)))
+        }
         Token::ParenLeft => {
             let lhs = match expr_bp(lexer, 0)? {
                 Ok(lhs) => lhs,
@@ -199,25 +207,8 @@ pub enum Expr<'a> {
 }
 
 impl<'a> Expr<'a> {
-    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        let token = lexer.peek().unwrap()?;
-        match token.inner {
-            Token::If => {
-                lexer.next();
-                let body = IfElse::parse_body(lexer)?;
-                Ok(Ok(token.map(|_| Expr::IfElse(Box::new(body)))))
-            }
-            Token::Let => {
-                lexer.next();
-                let body = LetIn::parse_body(lexer)?;
-                Ok(Ok(token.map(|_| Expr::LetIn(Box::new(body)))))
-            }
-            _ => Ok(expr_bp(lexer, 0)?),
-        }
-    }
-
     pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        match Self::try_parse(lexer)? {
+        match expr_bp(lexer, 0)? {
             Ok(expr) => Ok(expr),
             Err(token) => Err(token.error(format!("expected 'if' or atom got {:?}", token.inner))),
         }
