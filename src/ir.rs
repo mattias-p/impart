@@ -205,20 +205,10 @@ impl<T: Type> TyExpr<T> {
 }
 
 trait Parser<'a, T: Type> {
-    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<T>, String>;
     fn typed_ast_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<T>, String>;
 }
 
 impl<'a> Parser<'a, Bool> for Compiler<'a> {
-    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Bool>, String> {
-        let (def, source) = self.untyped_ast_atom(value)?;
-        match def {
-            AnyExpr::Bool(expr) => Ok(expr),
-            AnyExpr::Float(_) => Err(source.error("expected bool got float")),
-            AnyExpr::Color(_) => Err(source.error("expected bool got color")),
-        }
-    }
-
     fn typed_ast_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Bool>, String> {
         let (def, source) = self.untyped_ast_expr(value)?;
         match def {
@@ -230,15 +220,6 @@ impl<'a> Parser<'a, Bool> for Compiler<'a> {
 }
 
 impl<'a> Parser<'a, Color> for Compiler<'a> {
-    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Color>, String> {
-        let (def, source) = self.untyped_ast_atom(value)?;
-        match def {
-            AnyExpr::Color(expr) => Ok(expr),
-            AnyExpr::Bool(_) => Err(source.error("expected color got bool")),
-            AnyExpr::Float(_) => Err(source.error("expected color got float")),
-        }
-    }
-
     fn typed_ast_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {
         let (def, source) = self.untyped_ast_expr(value)?;
         match def {
@@ -250,15 +231,6 @@ impl<'a> Parser<'a, Color> for Compiler<'a> {
 }
 
 impl<'a> Parser<'a, Float> for Compiler<'a> {
-    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Float>, String> {
-        let (def, source) = self.untyped_ast_atom(value)?;
-        match def {
-            AnyExpr::Float(expr) => Ok(expr),
-            AnyExpr::Bool(_) => Err(source.error("expected float got bool")),
-            AnyExpr::Color(_) => Err(source.error("expected float got color")),
-        }
-    }
-
     fn typed_ast_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Float>, String> {
         let (def, source) = self.untyped_ast_expr(value)?;
         match def {
