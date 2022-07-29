@@ -71,6 +71,13 @@ pub enum Token<'a> {
     Equal,
     ParenLeft,
     ParenRight,
+    Perlin,
+    X,
+    Y,
+    BraceLeft,
+    Colon,
+    Semicolon,
+    BraceRight,
     Op(Op),
     Decimal(&'a str),
     Hexcode(&'a str),
@@ -251,6 +258,13 @@ impl<'a> Iterator for Lexer<'a> {
                     b"else" => Token::Else,
                     b"true" => Token::True,
                     b"false" => Token::False,
+                    b"Perlin" => Token::Perlin,
+                    b"X" => Token::X,
+                    b"Y" => Token::Y,
+                    b"{" => Token::BraceLeft,
+                    b"}" => Token::BraceRight,
+                    b":" => Token::Colon,
+                    b";" => Token::Semicolon,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
                         Err(err) => return Some(Err(self.error(err.to_string()))),
@@ -299,6 +313,13 @@ mod tests {
                 if
                 then
                 else
+                Perlin
+                X
+                Y
+                {
+                :
+                ;
+                }
                 (
                 )
                 *
@@ -325,6 +346,13 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::If));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Perlin));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::X));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Y));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::BraceLeft));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Colon));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Semicolon));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::BraceRight));
         assert_eq!(next_inner(&mut lexer), Ok(Token::ParenLeft));
         assert_eq!(next_inner(&mut lexer), Ok(Token::ParenRight));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Asterisk)));
