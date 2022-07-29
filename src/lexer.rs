@@ -52,6 +52,8 @@ pub enum Token<'a> {
     If,
     Then,
     Else,
+    True,
+    False,
     EqualSign,
     LessThan,
     GreaterThan,
@@ -210,6 +212,8 @@ impl<'a> Iterator for Lexer<'a> {
                     b"if" => Token::If,
                     b"then" => Token::Then,
                     b"else" => Token::Else,
+                    b"true" => Token::True,
+                    b"false" => Token::False,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
                         Err(err) => return Some(Err(self.error(err.to_string()))),

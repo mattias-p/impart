@@ -15,6 +15,8 @@ impl<'a> Value<'a> {
     pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
         let token = lexer.next().unwrap()?;
         match token.inner {
+            Token::True => Ok(Ok(token.map(|_| Value::True))),
+            Token::False => Ok(Ok(token.map(|_| Value::False))),
             Token::Decimal(s) => Ok(Ok(token.map(|_| Value::Float(s)))),
             Token::Hexcode(s) => Ok(Ok(token.map(|_| Value::Hexcode(s)))),
             Token::Ident(s) => Ok(Ok(token.map(|_| Value::Ident(s)))),
@@ -71,24 +73,6 @@ impl<'a> LetIn<'a> {
 pub enum Comparator {
     LessThan,
     GreaterThan,
-}
-
-impl Comparator {
-    pub fn try_parse<'a>(
-        lexer: &mut Lexer<'a>,
-    ) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        let token = lexer.next().unwrap()?;
-        match token.inner {
-            Token::LessThan => Ok(Ok(token.map(|_| Comparator::LessThan))),
-            Token::GreaterThan => Ok(Ok(token.map(|_| Comparator::GreaterThan))),
-            _ => Ok(Err(token)),
-        }
-    }
-
-    pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        Self::try_parse(lexer)?
-            .map_err(|token| token.error(format!("expected comparator got {:?}", token.inner)))
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
