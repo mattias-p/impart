@@ -95,34 +95,6 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
     Some(res)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Atom<'a> {
-    True,
-    False,
-    Float(&'a str),
-    Hexcode(&'a str),
-    Ident(&'a str),
-}
-
-impl<'a> Atom<'a> {
-    pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        let token = lexer.next().unwrap()?;
-        match token.inner {
-            Token::True => Ok(Ok(token.map(|_| Atom::True))),
-            Token::False => Ok(Ok(token.map(|_| Atom::False))),
-            Token::Decimal(s) => Ok(Ok(token.map(|_| Atom::Float(s)))),
-            Token::Hexcode(s) => Ok(Ok(token.map(|_| Atom::Hexcode(s)))),
-            Token::Ident(s) => Ok(Ok(token.map(|_| Atom::Ident(s)))),
-            _ => Ok(Err(token)),
-        }
-    }
-
-    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        Self::try_parse(lexer)?
-            .map_err(|token| token.error(format!("expected atom got {:?}", token.inner)))
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct LetIn<'a> {
     pub term: Loc<&'a str>,
@@ -195,6 +167,15 @@ impl<'a> IfElse<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Atom<'a> {
+    True,
+    False,
+    Float(&'a str),
+    Hexcode(&'a str),
+    Ident(&'a str),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnOp<'a> {
     pub op: Op,
@@ -265,11 +246,11 @@ mod tests {
     #[test]
     fn float() {
         assert_eq!(
-            Atom::parse(&mut Lexer::new(
+            Expr::parse(&mut Lexer::new(
                 //1234567
                 b"3.14",
             )),
-            Ok(Atom::Float("3.14").loc(1, 1)),
+            Ok(Expr::Atom(Atom::Float("3.14")).loc(1, 1)),
         );
     }
 
