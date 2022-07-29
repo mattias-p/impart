@@ -19,7 +19,7 @@ fn expr_bp<'a>(
             token.map(|_| Expr::IfElse(Box::new(body)))
         }
         Token::Let => {
-            let body = LetIn::parse_body(lexer)?;
+            let body = let_in(lexer)?;
             token.map(|_| Expr::LetIn(Box::new(body)))
         }
         Token::ParenLeft => {
@@ -82,6 +82,36 @@ fn expr_bp<'a>(
     Ok(Ok(lhs))
 }
 
+fn let_in<'a>(lexer: &mut Lexer<'a>) -> Result<LetIn<'a>, String> {
+    let token = lexer.next().unwrap()?;
+    let term = match token.inner {
+        Token::Ident(s) => token.map(|_| s),
+        inner => Err(token.error(format!("expected identifier got {inner:?}")))?,
+    };
+
+    let token = lexer.next().unwrap()?;
+    match &token.inner {
+        Token::Equal => {}
+        inner => Err(token.error(&format!("expected '=' got {inner:?}")))?,
+    };
+
+    let definition = Expr::parse(lexer)?;
+
+    let token = lexer.next().unwrap()?;
+    match &token.inner {
+        Token::In => {}
+        inner => Err(token.error(&format!("expected 'in' got {inner:?}")))?,
+    };
+
+    let expr = Expr::parse(lexer)?;
+
+    Ok(LetIn {
+        term,
+        definition,
+        expr,
+    })
+}
+
 fn prefix_binding_power(op: Op) -> ((), u8) {
     match op {
         Op::Not => ((), 7),
@@ -108,38 +138,6 @@ pub struct LetIn<'a> {
     pub term: Loc<&'a str>,
     pub definition: Loc<Expr<'a>>,
     pub expr: Loc<Expr<'a>>,
-}
-
-impl<'a> LetIn<'a> {
-    pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let token = lexer.next().unwrap()?;
-        let term = match token.inner {
-            Token::Ident(s) => token.map(|_| s),
-            inner => Err(token.error(format!("expected identifier got {inner:?}")))?,
-        };
-
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::Equal => {}
-            inner => Err(token.error(&format!("expected '=' got {inner:?}")))?,
-        };
-
-        let definition = Expr::parse(lexer)?;
-
-        let token = lexer.next().unwrap()?;
-        match &token.inner {
-            Token::In => {}
-            inner => Err(token.error(&format!("expected 'in' got {inner:?}")))?,
-        };
-
-        let expr = Expr::parse(lexer)?;
-
-        Ok(LetIn {
-            term,
-            definition,
-            expr,
-        })
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -210,7 +208,10 @@ impl<'a> Expr<'a> {
     pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
         match expr_bp(lexer, 0)? {
             Ok(expr) => Ok(expr),
-            Err(token) => Err(token.error(format!("expected 'if' or atom got {:?}", token.inner))),
+            Err(token) => Err(token.error(format!(
+                "expected 'let', 'if', '(' or an atom got {:?}",
+                token.inner
+            ))),
         }
     }
 }
