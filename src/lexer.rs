@@ -46,6 +46,20 @@ impl<T> LocExt for T {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Op {
+    Less,
+    Greater,
+    Minus,
+    Plus,
+    Asterisk,
+    Slash,
+    Or,
+    Xor,
+    And,
+    Not,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     Let,
     In,
@@ -55,15 +69,17 @@ pub enum Token<'a> {
     True,
     False,
     EqualSign,
-    LessThan,
-    GreaterThan,
+    ParenLeft,
+    ParenRight,
+    Op(Op),
     Decimal(&'a str),
     Hexcode(&'a str),
     Ident(&'a str),
-    EOF,
+    Eof,
 }
 
 pub struct Lexer<'a> {
+    lookahead: Option<Result<Loc<Token<'a>>, String>>,
     corpus: &'a [u8],
     pos: usize,
     line_no: usize,
@@ -73,11 +89,19 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(corpus: &'a [u8]) -> Self {
         Lexer {
+            lookahead: None,
             corpus,
             pos: 0,
             line_no: 1,
             line_start: 0,
         }
+    }
+
+    pub fn peek(&mut self) -> Option<Result<Loc<Token<'a>>, String>> {
+        if self.lookahead.is_none() {
+            self.lookahead = self.next();
+        }
+        self.lookahead.clone()
     }
 
     pub fn get_str(&self, first: usize, last: usize) -> Result<&'a str, Utf8Error> {
@@ -107,6 +131,10 @@ impl<'a> Lexer<'a> {
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Loc<Token<'a>>, String>;
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(lookahead) = self.lookahead.take() {
+            return Some(lookahead);
+        }
+
         #[derive(PartialEq)]
         enum State {
             Start,
@@ -199,13 +227,23 @@ impl<'a> Iterator for Lexer<'a> {
 
         let token = match state {
             State::Start | State::StartCR | State::Comment => {
-                return Some(Ok(self.produce(Token::EOF, self.pos)));
+                return Some(Ok(self.produce(Token::Eof, self.pos)));
             }
             State::Bareword(end) => {
                 let s = &self.corpus[self.pos..=end];
                 let token = match s {
-                    b">" => Token::GreaterThan,
-                    b"<" => Token::LessThan,
+                    b"(" => Token::ParenLeft,
+                    b")" => Token::ParenRight,
+                    b"-" => Token::Op(Op::Minus),
+                    b"+" => Token::Op(Op::Plus),
+                    b"*" => Token::Op(Op::Asterisk),
+                    b"/" => Token::Op(Op::Slash),
+                    b">" => Token::Op(Op::Greater),
+                    b"<" => Token::Op(Op::Less),
+                    b"not" => Token::Op(Op::Not),
+                    b"and" => Token::Op(Op::And),
+                    b"xor" => Token::Op(Op::Xor),
+                    b"or" => Token::Op(Op::Or),
                     b"=" => Token::EqualSign,
                     b"let" => Token::Let,
                     b"in" => Token::In,
@@ -276,12 +314,12 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
         assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::LessThan));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::GreaterThan));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Less));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Greater));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("3.14")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::EOF));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Eof));
     }
 
     #[test]

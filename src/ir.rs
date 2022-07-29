@@ -6,6 +6,7 @@ use palette::Srgb;
 use crate::ast;
 use crate::generate::Cell;
 use crate::lexer::Loc;
+use crate::lexer::Op;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Variable {
@@ -73,6 +74,21 @@ pub enum BoolOp {
         lhs: TyExpr<Float>,
         rhs: TyExpr<Float>,
     },
+    Not {
+        rhs: TyExpr<Bool>,
+    },
+    And {
+        lhs: TyExpr<Bool>,
+        rhs: TyExpr<Bool>,
+    },
+    Xor {
+        lhs: TyExpr<Bool>,
+        rhs: TyExpr<Bool>,
+    },
+    Or {
+        lhs: TyExpr<Bool>,
+        rhs: TyExpr<Bool>,
+    },
 }
 impl TypeOp for BoolOp {
     type Repr = bool;
@@ -80,6 +96,7 @@ impl TypeOp for BoolOp {
         match self {
             BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
             BoolOp::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
+            _ => unreachable!(),
         }
     }
 }
@@ -108,6 +125,25 @@ impl Type for Float {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FloatOp {
     Variable(Variable),
+    Neg {
+        rhs: TyExpr<Float>,
+    },
+    Mul {
+        lhs: TyExpr<Float>,
+        rhs: TyExpr<Float>,
+    },
+    Div {
+        lhs: TyExpr<Float>,
+        rhs: TyExpr<Float>,
+    },
+    Add {
+        lhs: TyExpr<Float>,
+        rhs: TyExpr<Float>,
+    },
+    Sub {
+        lhs: TyExpr<Float>,
+        rhs: TyExpr<Float>,
+    },
 }
 impl TypeOp for FloatOp {
     type Repr = f32;
@@ -116,6 +152,11 @@ impl TypeOp for FloatOp {
             FloatOp::Variable(Variable::Elevation) => cell.elevation,
             FloatOp::Variable(Variable::Humidity) => cell.humidity,
             FloatOp::Variable(Variable::Temperature) => cell.temperature,
+            FloatOp::Neg { rhs } => -rhs.eval(cell),
+            FloatOp::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
+            FloatOp::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
+            FloatOp::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
+            FloatOp::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
         }
     }
 }
@@ -141,7 +182,7 @@ impl AnyExpr {
 pub enum TyExpr<T: Type> {
     Imm(T::Repr),
     IfThenElse(Box<IfThenElse<T>>),
-    TypeOp(T::Op),
+    TypeOp(Box<T::Op>),
 }
 
 impl<T: Type> TyExpr<T> {
@@ -161,13 +202,13 @@ impl<T: Type> TyExpr<T> {
 }
 
 trait Parser<'a, T: Type> {
-    fn typed_ast_value(&self, value: &'a Loc<ast::Value<'a>>) -> Result<TyExpr<T>, String>;
+    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<T>, String>;
     fn typed_ast_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<T>, String>;
 }
 
 impl<'a> Parser<'a, Bool> for Compiler<'a> {
-    fn typed_ast_value(&self, value: &'a Loc<ast::Value<'a>>) -> Result<TyExpr<Bool>, String> {
-        let (def, source) = self.untyped_ast_value(value)?;
+    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Bool>, String> {
+        let (def, source) = self.untyped_ast_atom(value)?;
         match def {
             AnyExpr::Bool(expr) => Ok(expr),
             AnyExpr::Float(_) => Err(source.error("expected bool got float")),
@@ -186,8 +227,8 @@ impl<'a> Parser<'a, Bool> for Compiler<'a> {
 }
 
 impl<'a> Parser<'a, Color> for Compiler<'a> {
-    fn typed_ast_value(&self, value: &'a Loc<ast::Value<'a>>) -> Result<TyExpr<Color>, String> {
-        let (def, source) = self.untyped_ast_value(value)?;
+    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Color>, String> {
+        let (def, source) = self.untyped_ast_atom(value)?;
         match def {
             AnyExpr::Color(expr) => Ok(expr),
             AnyExpr::Bool(_) => Err(source.error("expected color got bool")),
@@ -206,8 +247,8 @@ impl<'a> Parser<'a, Color> for Compiler<'a> {
 }
 
 impl<'a> Parser<'a, Float> for Compiler<'a> {
-    fn typed_ast_value(&self, value: &'a Loc<ast::Value<'a>>) -> Result<TyExpr<Float>, String> {
-        let (def, source) = self.untyped_ast_value(value)?;
+    fn typed_ast_atom(&self, value: &'a Loc<ast::Atom<'a>>) -> Result<TyExpr<Float>, String> {
+        let (def, source) = self.untyped_ast_atom(value)?;
         match def {
             AnyExpr::Float(expr) => Ok(expr),
             AnyExpr::Bool(_) => Err(source.error("expected float got bool")),
@@ -257,37 +298,43 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn untyped_ast_value(
+    pub fn untyped_ast_atom(
         &self,
-        value: &Loc<ast::Value<'a>>,
+        value: &Loc<ast::Atom<'a>>,
     ) -> Result<(AnyExpr, Source), String> {
         match value.inner {
-            ast::Value::True => Ok((AnyExpr::Bool(TyExpr::Imm(true)), Source::Inline)),
-            ast::Value::False => Ok((AnyExpr::Bool(TyExpr::Imm(false)), Source::Inline)),
-            ast::Value::Float(s) => {
+            ast::Atom::True => Ok((AnyExpr::Bool(TyExpr::Imm(true)), Source::Inline)),
+            ast::Atom::False => Ok((AnyExpr::Bool(TyExpr::Imm(false)), Source::Inline)),
+            ast::Atom::Float(s) => {
                 let decoded = s.parse::<f32>().unwrap();
                 Ok((AnyExpr::Float(TyExpr::Imm(decoded)), Source::Inline))
             }
-            ast::Value::Hexcode(s) => {
+            ast::Atom::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 Ok((
                     AnyExpr::Color(TyExpr::Imm(Srgb::<u8>::from_u32::<Argb>(argb))),
                     Source::Inline,
                 ))
             }
-            ast::Value::Ident(s) => match self.symbol(s) {
+            ast::Atom::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
                 None => match s {
                     "elevation" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Elevation))),
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                            Variable::Elevation,
+                        )))),
                         Source::Prelude,
                     )),
                     "humidity" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Humidity))),
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                            Variable::Humidity,
+                        )))),
                         Source::Prelude,
                     )),
                     "temperature" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(FloatOp::Variable(Variable::Temperature))),
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                            Variable::Temperature,
+                        )))),
                         Source::Prelude,
                     )),
                     _ => Err(value.error(format!("use of undeclared identifier"))),
@@ -298,25 +345,105 @@ impl<'a> Compiler<'a> {
 
     pub fn untyped_ast_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
         match &expr.inner {
-            ast::Expr::Value(value) => self.untyped_ast_value(&expr.clone().map(|_| value.clone())),
+            ast::Expr::Atom(atom) => self.untyped_ast_atom(&expr.clone().map(|_| atom.clone())),
             ast::Expr::LetIn(inner) => {
-                let (def, _) = self.untyped_ast_value(&inner.definition)?;
+                let (def, _) = self.untyped_ast_atom(&inner.definition)?;
                 let def = inner.term.map(|_| def);
                 self.define(inner.term, def.inner)
                     .untyped_ast_expr(&inner.expr)
             }
-            ast::Expr::Cond(inner) => {
-                let lhs: TyExpr<Float> = self.typed_ast_value(&inner.left)?;
-                let rhs: TyExpr<Float> = self.typed_ast_value(&inner.right)?;
-                let op = match inner.comparator.inner {
-                    ast::Comparator::GreaterThan => BoolOp::Greater { lhs, rhs },
-                    ast::Comparator::LessThan => BoolOp::Less { lhs, rhs },
-                };
-                Ok((
-                    AnyExpr::Bool(inner.comparator.map(|_| TyExpr::TypeOp(op)).inner),
-                    Source::Inline,
-                ))
-            }
+            ast::Expr::UnOp(inner) => match inner.op {
+                Op::Not => {
+                    let rhs: TyExpr<Bool> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Not { rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Minus => {
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Neg { rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                _ => unreachable!(),
+            },
+            ast::Expr::BinOp(inner) => match inner.op {
+                Op::Asterisk => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Mul { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Slash => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Div { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Plus => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Add { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Minus => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Sub { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Less => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Less { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Greater => {
+                    let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Greater { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::And => {
+                    let lhs: TyExpr<Bool> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Bool> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::And { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Xor => {
+                    let lhs: TyExpr<Bool> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Bool> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Xor { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                Op::Or => {
+                    let lhs: TyExpr<Bool> = self.typed_ast_expr(&inner.lhs)?;
+                    let rhs: TyExpr<Bool> = self.typed_ast_expr(&inner.rhs)?;
+                    Ok((
+                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Or { lhs, rhs }))),
+                        Source::Inline,
+                    ))
+                }
+                _ => unreachable!(),
+            },
             ast::Expr::IfElse(inner) => {
                 let cond = self.typed_ast_expr(&inner.cond)?;
                 let (if_true, _) = self.untyped_ast_expr(&inner.if_true)?;
