@@ -21,6 +21,8 @@ pub struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     pub fn compile_value(&self, value: &'a ast::Value<'a>) -> Result<Immediate<Variable>, String> {
         match value {
+            ast::Value::True => unimplemented!(),
+            ast::Value::False => unimplemented!(),
             ast::Value::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 let color = Color::from_u32::<Argb>(argb);
@@ -52,7 +54,7 @@ impl<'a> Compiler<'a> {
                 Ok(Immediate::Float(_)) => Err(expr.error("expected color got float")),
                 Err(e) => Err(expr.error(e.to_string()))?,
             },
-            ast::Expr::Let(inner) => {
+            ast::Expr::LetIn(inner) => {
                 let definition = self.compile_value(&inner.definition.inner)?;
                 let definition = inner.term.map(|_| definition);
                 match self.defs.entry(inner.term.inner) {
@@ -80,25 +82,29 @@ impl<'a> Compiler<'a> {
                 };
                 self.compile_expr(&inner.expr)
             }
-            ast::Expr::If(inner) => {
-                let left = match self.compile_value(&inner.left.inner) {
+            ast::Expr::IfElse(inner) => {
+                let left = match self.compile_value(&inner.cond.left.inner) {
                     Ok(Immediate::Float(x)) => x,
-                    Ok(Immediate::Color(_)) => Err(inner.left.error("expected float got color"))?,
+                    Ok(Immediate::Color(_)) => {
+                        Err(inner.cond.left.error("expected float got color"))?
+                    }
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
-                let right = match self.compile_value(&inner.right.inner) {
+                let right = match self.compile_value(&inner.cond.right.inner) {
                     Ok(Immediate::Float(x)) => x,
-                    Ok(Immediate::Color(_)) => Err(inner.right.error("expected float got color"))?,
+                    Ok(Immediate::Color(_)) => {
+                        Err(inner.cond.right.error("expected float got color"))?
+                    }
                     Err(e) => Err(expr.error(e.to_string()))?,
                 };
 
-                let branch_true = self.compile_expr(&inner.branch_true)?;
-                let branch_false = self.compile_expr(&inner.branch_false)?;
+                let branch_true = self.compile_expr(&inner.if_true)?;
+                let branch_false = self.compile_expr(&inner.if_false)?;
 
                 Ok(Expr::If(Box::new(If {
                     left,
-                    comparator: inner.comparator.inner,
+                    comparator: inner.cond.comparator.inner,
                     right,
                     branch_true,
                     branch_false,

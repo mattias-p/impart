@@ -4,6 +4,8 @@ use crate::lexer::Token;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value<'a> {
+    True,
+    False,
     Float(&'a str),
     Hexcode(&'a str),
     Ident(&'a str),
@@ -27,13 +29,13 @@ impl<'a> Value<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Let<'a> {
+pub struct LetIn<'a> {
     pub term: Loc<&'a str>,
     pub definition: Loc<Value<'a>>,
     pub expr: Loc<Expr<'a>>,
 }
 
-impl<'a> Let<'a> {
+impl<'a> LetIn<'a> {
     pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let token = lexer.next().unwrap()?;
         let term = match token.inner {
@@ -57,7 +59,7 @@ impl<'a> Let<'a> {
 
         let expr = Expr::parse(lexer)?;
 
-        Ok(Let {
+        Ok(LetIn {
             term,
             definition,
             expr,
@@ -90,19 +92,43 @@ impl Comparator {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct If<'a> {
+pub struct Cond<'a> {
     pub left: Loc<Value<'a>>,
     pub comparator: Loc<Comparator>,
     pub right: Loc<Value<'a>>,
-    pub branch_true: Loc<Expr<'a>>,
-    pub branch_false: Loc<Expr<'a>>,
 }
 
-impl<'a> If<'a> {
-    pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
+impl<'a> Cond<'a> {
+    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Self, String> {
         let left = Value::parse(lexer)?;
-        let comparator = Comparator::parse(lexer)?;
+
+        let token = lexer.next().unwrap()?;
+        let comparator = match &token.inner {
+            Token::GreaterThan => token.map(|_| Comparator::GreaterThan),
+            Token::LessThan => token.map(|_| Comparator::LessThan),
+            inner => Err(token.error(&format!("expected 'then' got {inner:?}")))?,
+        };
+
         let right = Value::parse(lexer)?;
+
+        Ok(Cond {
+            left,
+            comparator,
+            right,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfElse<'a> {
+    pub cond: Cond<'a>,
+    pub if_true: Loc<Expr<'a>>,
+    pub if_false: Loc<Expr<'a>>,
+}
+
+impl<'a> IfElse<'a> {
+    pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
+        let cond = Cond::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
         match &token.inner {
@@ -110,20 +136,18 @@ impl<'a> If<'a> {
             inner => Err(token.error(&format!("expected 'then' got {inner:?}")))?,
         };
 
-        let branch_true = Expr::parse(lexer)?;
+        let if_true = Expr::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
-        let branch_false = match &token.inner {
+        let if_false = match &token.inner {
             Token::Else => Expr::parse(lexer)?,
             inner => Err(token.error(&format!("expected 'else' got {inner:?}")))?,
         };
 
-        Ok(If {
-            left,
-            comparator,
-            right,
-            branch_true,
-            branch_false,
+        Ok(IfElse {
+            cond,
+            if_true,
+            if_false,
         })
     }
 }
@@ -131,8 +155,8 @@ impl<'a> If<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
     Value(Value<'a>),
-    If(Box<If<'a>>),
-    Let(Box<Let<'a>>),
+    IfElse(Box<IfElse<'a>>),
+    LetIn(Box<LetIn<'a>>),
 }
 
 impl<'a> Expr<'a> {
@@ -141,12 +165,12 @@ impl<'a> Expr<'a> {
             Ok(value) => Ok(Ok(value.map(Expr::Value))),
             Err(token) => match token.inner {
                 Token::If => {
-                    let body = If::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::If(Box::new(body)))))
+                    let body = IfElse::parse_body(lexer)?;
+                    Ok(Ok(token.map(|_| Expr::IfElse(Box::new(body)))))
                 }
                 Token::Let => {
-                    let body = Let::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::Let(Box::new(body)))))
+                    let body = LetIn::parse_body(lexer)?;
+                    Ok(Ok(token.map(|_| Expr::LetIn(Box::new(body)))))
                 }
                 _ => Ok(Err(token)),
             },
@@ -219,7 +243,7 @@ mod tests {
                 //123456789012345678901234
                 b"let pi = 3.14 in foo",
             )),
-            Ok(Expr::Let(Box::new(Let {
+            Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
                 definition: Value::Float("3.14").loc(1, 10),
                 expr: Expr::Value(Value::Ident("foo")).loc(1, 18),
@@ -236,10 +260,10 @@ mod tests {
                 //12345678901234567890123456789012345678
                 b"let pi = 3.14 in let tau = 6.28 in foo",
             )),
-            Ok(Expr::Let(Box::new(Let {
+            Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
                 definition: Value::Float("3.14").loc(1, 10),
-                expr: Expr::Let(Box::new(Let {
+                expr: Expr::LetIn(Box::new(LetIn {
                     term: "tau".loc(1, 22),
                     definition: Value::Float("6.28").loc(1, 28),
                     expr: Expr::Value(Value::Ident("foo")).loc(1, 36),
@@ -258,12 +282,12 @@ mod tests {
                 //123456789012345678901234567890123456789
                 b"if elevation > 0.5 then brown else cyan",
             )),
-            Ok(Expr::If(Box::new(If {
+            Ok(Expr::IfElse(Box::new(IfElse {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Float("0.5").loc(1, 16),
-                branch_true: Expr::Value(Value::Ident("brown")).loc(1, 25),
-                branch_false: Expr::Value(Value::Ident("cyan")).loc(1, 36),
+                if_true: Expr::Value(Value::Ident("brown")).loc(1, 25),
+                if_false: Expr::Value(Value::Ident("cyan")).loc(1, 36),
             }))
             .loc(1, 1)),
         );
@@ -277,17 +301,17 @@ mod tests {
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
             )),
-            Ok(Expr::If(Box::new(If {
+            Ok(Expr::IfElse(Box::new(IfElse {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Float("0.5").loc(1, 16),
-                branch_true: Expr::Value(Value::Ident("cyan")).loc(1, 25),
-                branch_false: Expr::If(Box::new(If {
+                if_true: Expr::Value(Value::Ident("cyan")).loc(1, 25),
+                if_false: Expr::IfElse(Box::new(IfElse {
                         left: Value::Ident("humidity").loc(1, 38),
                         comparator: Comparator::LessThan.loc(1, 47),
                         right: Value::Float("0.31").loc(1, 49),
-                        branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 59),
-                        branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 75),
+                        if_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 59),
+                        if_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 75),
                     }))
                     .loc(1, 35),
             }))
@@ -303,19 +327,19 @@ mod tests {
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
             )),
-            Ok(Expr::If(Box::new(If {
+            Ok(Expr::IfElse(Box::new(IfElse {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Float("0.5").loc(1, 16),
-                branch_true: Expr::If(Box::new(If {
+                if_true: Expr::IfElse(Box::new(IfElse {
                         left: Value::Ident("humidity").loc(1, 28),
                         comparator: Comparator::LessThan.loc(1, 37),
                         right: Value::Float("0.31").loc(1, 39),
-                        branch_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 49),
-                        branch_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 65),
+                        if_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 49),
+                        if_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 65),
                     }))
                     .loc(1, 25),
-                branch_false: Expr::Value(Value::Ident("cyan")).loc(1, 80),
+                if_false: Expr::Value(Value::Ident("cyan")).loc(1, 80),
             }))
             .loc(1, 1)),
         );
@@ -329,10 +353,10 @@ mod tests {
                 //123456789012345678901234567890  1234567890123456789012345678901234  1234567
                 b"let peak = #A38983 in // brown\nlet mountain = #805C54 in // brown\n#123456"
             )),
-            Ok(Expr::Let(Box::new(Let {
+            Ok(Expr::LetIn(Box::new(LetIn {
                 term: "peak".loc(1, 5),
                 definition: Value::Hexcode("A38983").loc(1, 12),
-                expr: Expr::Let(Box::new(Let {
+                expr: Expr::LetIn(Box::new(LetIn {
                     term: "mountain".loc(2, 5),
                     definition: Value::Hexcode("805C54").loc(2, 16),
                     expr: Expr::Value(Value::Hexcode("123456")).loc(3, 1),

@@ -1,6 +1,7 @@
 mod ast;
 mod expr;
 mod generate;
+mod ir;
 mod lexer;
 mod render;
 
