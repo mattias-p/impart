@@ -305,15 +305,20 @@ impl<'a> Compiler<'a> {
                 self.define(inner.term, def.inner)
                     .untyped_ast_expr(&inner.expr)
             }
-
-            ast::Expr::IfElse(inner) => {
-                let lhs: TyExpr<Float> = self.typed_ast_value(&inner.cond.left)?;
-                let rhs: TyExpr<Float> = self.typed_ast_value(&inner.cond.right)?;
-                let op = match inner.cond.comparator.inner {
+            ast::Expr::Cond(inner) => {
+                let lhs: TyExpr<Float> = self.typed_ast_value(&inner.left)?;
+                let rhs: TyExpr<Float> = self.typed_ast_value(&inner.right)?;
+                let op = match inner.comparator.inner {
                     ast::Comparator::GreaterThan => BoolOp::Greater { lhs, rhs },
                     ast::Comparator::LessThan => BoolOp::Less { lhs, rhs },
                 };
-                let cond = inner.cond.comparator.map(|_| TyExpr::TypeOp(op)).inner;
+                Ok((
+                    AnyExpr::Bool(inner.comparator.map(|_| TyExpr::TypeOp(op)).inner),
+                    Source::Inline,
+                ))
+            }
+            ast::Expr::IfElse(inner) => {
+                let cond = self.typed_ast_expr(&inner.cond)?;
                 let (if_true, _) = self.untyped_ast_expr(&inner.if_true)?;
                 let (if_false, _) = self.untyped_ast_expr(&inner.if_false)?;
                 match (if_true, if_false) {

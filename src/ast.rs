@@ -83,7 +83,7 @@ pub struct Cond<'a> {
 }
 
 impl<'a> Cond<'a> {
-    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Self, String> {
+    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
         let left = Value::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
@@ -95,17 +95,19 @@ impl<'a> Cond<'a> {
 
         let right = Value::parse(lexer)?;
 
-        Ok(Cond {
-            left,
-            comparator,
-            right,
-        })
+        Ok(comparator.map(|_| {
+            Expr::Cond(Cond {
+                left,
+                comparator,
+                right,
+            })
+        }))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfElse<'a> {
-    pub cond: Cond<'a>,
+    pub cond: Loc<Expr<'a>>,
     pub if_true: Loc<Expr<'a>>,
     pub if_false: Loc<Expr<'a>>,
 }
@@ -139,6 +141,7 @@ impl<'a> IfElse<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
     Value(Value<'a>),
+    Cond(Cond<'a>),
     IfElse(Box<IfElse<'a>>),
     LetIn(Box<LetIn<'a>>),
 }
