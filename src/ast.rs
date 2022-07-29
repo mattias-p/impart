@@ -9,6 +9,9 @@ fn expr_bp<'a>(
 ) -> Result<Result<Loc<Expr<'a>>, Loc<Token<'a>>>, String> {
     let token = lexer.next().unwrap()?;
     let mut lhs = match token.inner {
+        Token::Elevation => token.map(|_| Expr::Elevation),
+        Token::Humidity => token.map(|_| Expr::Humidity),
+        Token::Temperature => token.map(|_| Expr::Temperature),
         Token::True => token.map(|_| Expr::True),
         Token::False => token.map(|_| Expr::False),
         Token::Decimal(s) => token.map(|_| Expr::Float(s)),
@@ -188,6 +191,9 @@ pub struct BinOp<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
+    Elevation,
+    Humidity,
+    Temperature,
     True,
     False,
     Float(&'a str),
@@ -313,7 +319,7 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    lhs: Expr::Elevation.loc(1, 4),
                     rhs: Expr::Float("0.5").loc(1, 16),
                 }))
                 .loc(1, 14),
@@ -335,14 +341,14 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    lhs: Expr::Elevation.loc(1, 4),
                     rhs: Expr::Float("0.5").loc(1, 16),
                 })).loc(1, 14),
                 if_true: Expr::Ident("cyan").loc(1, 25),
                 if_false: Expr::IfElse(Box::new(IfElse {
                     cond: Expr::BinOp(Box::new(BinOp {
                         op: Op::Less,
-                        lhs: Expr::Ident("humidity").loc(1, 38),
+                        lhs: Expr::Humidity.loc(1, 38),
                         rhs: Expr::Float("0.31").loc(1, 49),
                     })).loc(1,47),
                     if_true: Expr::Ident("sandybrown").loc(1, 59),
@@ -365,13 +371,13 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    lhs: Expr::Elevation.loc(1, 4),
                     rhs: Expr::Float("0.5").loc(1, 16),
                 })).loc(1, 14),
                 if_true: Expr::IfElse(Box::new(IfElse {
                         cond: Expr::BinOp(Box::new(BinOp {
                             op: Op::Less,
-                            lhs: Expr::Ident("humidity").loc(1, 28),
+                            lhs: Expr::Humidity.loc(1, 28),
                             rhs: Expr::Float("0.31").loc(1, 39),
                         })).loc(1, 37),
                         if_true: Expr::Ident("sandybrown").loc(1, 49),

@@ -17,7 +17,6 @@ pub enum Variable {
 
 pub enum Source {
     Inline,
-    Prelude,
     Def(usize, usize),
 }
 
@@ -26,7 +25,6 @@ impl Source {
         let message = message.as_ref();
         match self {
             Source::Inline => format!("{message}"),
-            Source::Prelude => format!("{message} (prelude)"),
             Source::Def(line, col) => format!("{message} (defined at {line}:{col})"),
         }
     }
@@ -221,6 +219,18 @@ impl<'a> SymTable<'a> {
 
     pub fn any_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
         match &expr.inner {
+            ast::Expr::Elevation => Ok((
+                FloatOp::Variable(Variable::Elevation).into_anyexpr(),
+                Source::Inline,
+            )),
+            ast::Expr::Humidity => Ok((
+                FloatOp::Variable(Variable::Humidity).into_anyexpr(),
+                Source::Inline,
+            )),
+            ast::Expr::Temperature => Ok((
+                FloatOp::Variable(Variable::Temperature).into_anyexpr(),
+                Source::Inline,
+            )),
             ast::Expr::True => Ok((AnyExpr::Bool(Expr::Imm(true)), Source::Inline)),
             ast::Expr::False => Ok((AnyExpr::Bool(Expr::Imm(false)), Source::Inline)),
             ast::Expr::Float(s) => {
@@ -236,21 +246,7 @@ impl<'a> SymTable<'a> {
             }
             ast::Expr::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
-                None => match *s {
-                    "elevation" => Ok((
-                        FloatOp::Variable(Variable::Elevation).into_anyexpr(),
-                        Source::Prelude,
-                    )),
-                    "humidity" => Ok((
-                        FloatOp::Variable(Variable::Humidity).into_anyexpr(),
-                        Source::Prelude,
-                    )),
-                    "temperature" => Ok((
-                        FloatOp::Variable(Variable::Temperature).into_anyexpr(),
-                        Source::Prelude,
-                    )),
-                    _ => Err(expr.error(format!("use of undeclared identifier"))),
-                },
+                None => Err(expr.error(format!("use of undeclared identifier"))),
             },
             ast::Expr::LetIn(inner) => {
                 let (def, _) = self.any_expr(&inner.definition)?;

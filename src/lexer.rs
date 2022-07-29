@@ -61,6 +61,9 @@ pub enum Op {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
+    Elevation,
+    Humidity,
+    Temperature,
     Let,
     In,
     If,
@@ -239,6 +242,9 @@ impl<'a> Iterator for Lexer<'a> {
             State::Bareword(end) => {
                 let s = &self.corpus[self.pos..=end];
                 let token = match s {
+                    b"elevation" => Token::Elevation,
+                    b"humidity" => Token::Humidity,
+                    b"temperature" => Token::Temperature,
                     b"(" => Token::ParenLeft,
                     b")" => Token::ParenRight,
                     b"-" => Token::Op(Op::Minus),
@@ -302,6 +308,9 @@ mod tests {
     fn tokens() {
         let mut lexer = Lexer::new(
             b"
+                elevation
+                humidity
+                temperature
                 true
                 false
                 3.14
@@ -335,6 +344,9 @@ mod tests {
             ",
         );
 
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Elevation));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Humidity));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Temperature));
         assert_eq!(next_inner(&mut lexer), Ok(Token::True));
         assert_eq!(next_inner(&mut lexer), Ok(Token::False));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("3.14")));
