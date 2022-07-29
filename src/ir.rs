@@ -96,7 +96,10 @@ impl TypeOp for BoolOp {
         match self {
             BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
             BoolOp::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
-            _ => unreachable!(),
+            BoolOp::Not { rhs } => !rhs.eval(cell),
+            BoolOp::And { lhs, rhs } => lhs.eval(cell) && rhs.eval(cell),
+            BoolOp::Xor { lhs, rhs } => lhs.eval(cell) ^ rhs.eval(cell),
+            BoolOp::Or { lhs, rhs } => lhs.eval(cell) || rhs.eval(cell),
         }
     }
 }
@@ -112,7 +115,7 @@ pub enum ColorOp {}
 impl TypeOp for ColorOp {
     type Repr = Srgb<u8>;
     fn eval(&self, _cell: Cell) -> Self::Repr {
-        unimplemented!()
+        unreachable!("ColorOp is a never-type");
     }
 }
 
@@ -347,7 +350,7 @@ impl<'a> Compiler<'a> {
         match &expr.inner {
             ast::Expr::Atom(atom) => self.untyped_ast_atom(&expr.clone().map(|_| atom.clone())),
             ast::Expr::LetIn(inner) => {
-                let (def, _) = self.untyped_ast_atom(&inner.definition)?;
+                let (def, _) = self.untyped_ast_expr(&inner.definition)?;
                 let def = inner.term.map(|_| def);
                 self.define(inner.term, def.inner)
                     .untyped_ast_expr(&inner.expr)
@@ -367,7 +370,7 @@ impl<'a> Compiler<'a> {
                         Source::Inline,
                     ))
                 }
-                _ => unreachable!(),
+                _ => unreachable!("no such unary operator"),
             },
             ast::Expr::BinOp(inner) => match inner.op {
                 Op::Asterisk => {
@@ -378,7 +381,7 @@ impl<'a> Compiler<'a> {
                         Source::Inline,
                     ))
                 }
-                Op::Slash => {
+                Op::Solidus => {
                     let lhs: TyExpr<Float> = self.typed_ast_expr(&inner.lhs)?;
                     let rhs: TyExpr<Float> = self.typed_ast_expr(&inner.rhs)?;
                     Ok((
@@ -442,7 +445,7 @@ impl<'a> Compiler<'a> {
                         Source::Inline,
                     ))
                 }
-                _ => unreachable!(),
+                _ => unreachable!("no such binary operator"),
             },
             ast::Expr::IfElse(inner) => {
                 let cond = self.typed_ast_expr(&inner.cond)?;

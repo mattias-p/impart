@@ -52,7 +52,7 @@ pub enum Op {
     Minus,
     Plus,
     Asterisk,
-    Slash,
+    Solidus,
     Or,
     Xor,
     And,
@@ -68,7 +68,7 @@ pub enum Token<'a> {
     Else,
     True,
     False,
-    EqualSign,
+    Equal,
     ParenLeft,
     ParenRight,
     Op(Op),
@@ -139,7 +139,7 @@ impl<'a> Iterator for Lexer<'a> {
         enum State {
             Start,
             StartCR,
-            Slash,
+            Solidus,
             Comment,
             Bareword(usize),
             Decimal0,
@@ -175,13 +175,13 @@ impl<'a> Iterator for Lexer<'a> {
                     self.pos += 1;
                     State::Start
                 }
-                (State::Start | State::StartCR, b'/') => State::Slash,
+                (State::Start | State::StartCR, b'/') => State::Solidus,
                 (State::Start | State::StartCR, b'#') => State::Hexcode0(0),
                 (State::Start | State::StartCR | State::Decimal0, b'0'..=b'9') => State::Decimal0,
                 (State::Start | State::StartCR, _) => State::Bareword(pos),
 
                 // Comments
-                (State::Slash, b'/') => {
+                (State::Solidus, b'/') => {
                     self.pos += 2;
                     State::Comment
                 }
@@ -192,14 +192,14 @@ impl<'a> Iterator for Lexer<'a> {
 
                 // Whitespace
                 (
-                    State::Bareword(_) | State::Decimal(_) | State::Hexcode(_) | State::Slash,
+                    State::Bareword(_) | State::Decimal(_) | State::Hexcode(_) | State::Solidus,
                     b' ' | b'\n' | b'\r',
                 ) => {
                     break;
                 }
 
                 // Barewords
-                (State::Bareword(_) | State::Slash, _) => State::Bareword(pos),
+                (State::Bareword(_) | State::Solidus, _) => State::Bareword(pos),
 
                 // Hexcodes
                 (State::Hexcode0(count), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => {
@@ -237,14 +237,13 @@ impl<'a> Iterator for Lexer<'a> {
                     b"-" => Token::Op(Op::Minus),
                     b"+" => Token::Op(Op::Plus),
                     b"*" => Token::Op(Op::Asterisk),
-                    b"/" => Token::Op(Op::Slash),
                     b">" => Token::Op(Op::Greater),
                     b"<" => Token::Op(Op::Less),
                     b"not" => Token::Op(Op::Not),
                     b"and" => Token::Op(Op::And),
                     b"xor" => Token::Op(Op::Xor),
                     b"or" => Token::Op(Op::Or),
-                    b"=" => Token::EqualSign,
+                    b"=" => Token::Equal,
                     b"let" => Token::Let,
                     b"in" => Token::In,
                     b"if" => Token::If,
@@ -259,12 +258,7 @@ impl<'a> Iterator for Lexer<'a> {
                 };
                 self.produce(token, end + 1)
             }
-            State::Slash => {
-                let s = &self.corpus[self.pos..=self.pos];
-                let ident = std::str::from_utf8(s).unwrap();
-                let token = Token::Ident(ident);
-                self.produce(token, self.pos + 1)
-            }
+            State::Solidus => self.produce(Token::Op(Op::Solidus), self.pos + 1),
             State::Decimal(end) => {
                 let s = self.get_str(self.pos, end).unwrap();
                 self.produce(Token::Decimal(s), end + 1)
@@ -294,31 +288,55 @@ mod tests {
     fn tokens() {
         let mut lexer = Lexer::new(
             b"
+                true
+                false
+                3.14
+                #fc9630
                 let
+                foobar
+                =
                 in
                 if
                 then
                 else
-                =
+                (
+                )
+                *
+                /
+                +
+                -
                 <
                 >
-                3.14
-                #fc9630
-                foobar
+                not
+                and
+                xor
+                or
             ",
         );
 
+        assert_eq!(next_inner(&mut lexer), Ok(Token::True));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::False));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("3.14")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Let));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Equal));
         assert_eq!(next_inner(&mut lexer), Ok(Token::In));
         assert_eq!(next_inner(&mut lexer), Ok(Token::If));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::EqualSign));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Less));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Greater));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("3.14")));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Hexcode("fc9630")));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::ParenLeft));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::ParenRight));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Asterisk)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Solidus)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Plus)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Minus)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Less)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Greater)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Not)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::And)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Xor)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Or)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Eof));
     }
 

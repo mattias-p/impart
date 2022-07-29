@@ -3,7 +3,10 @@ use crate::lexer::Loc;
 use crate::lexer::Op;
 use crate::lexer::Token;
 
-fn expr_bp<'a>(lexer: &mut Lexer<'a>, min_bp: u8) -> Result<Loc<Expr<'a>>, String> {
+fn expr_bp<'a>(
+    lexer: &mut Lexer<'a>,
+    min_bp: u8,
+) -> Result<Result<Loc<Expr<'a>>, Loc<Token<'a>>>, String> {
     let token = lexer.next().unwrap()?;
     let mut lhs = match token.inner {
         Token::True => token.map(|_| Expr::Atom(Atom::True)),
@@ -12,7 +15,12 @@ fn expr_bp<'a>(lexer: &mut Lexer<'a>, min_bp: u8) -> Result<Loc<Expr<'a>>, Strin
         Token::Hexcode(s) => token.map(|_| Expr::Atom(Atom::Hexcode(s))),
         Token::Ident(s) => token.map(|_| Expr::Atom(Atom::Ident(s))),
         Token::ParenLeft => {
-            let lhs = expr_bp(lexer, 0);
+            let lhs = match expr_bp(lexer, 0)? {
+                Ok(lhs) => lhs,
+                Err(token) => {
+                    Err(token.error(format!("unclosed parenthesis got {:?}", token.inner)))?
+                }
+            };
 
             let delim = lexer.next().unwrap()?;
             match delim.inner {
@@ -20,14 +28,20 @@ fn expr_bp<'a>(lexer: &mut Lexer<'a>, min_bp: u8) -> Result<Loc<Expr<'a>>, Strin
                 inner => Err(delim.error(format!("expected ')' got {inner:?}")))?,
             }
 
-            lhs?
+            lhs
         }
         Token::Op(op) => {
             let ((), r_bp) = prefix_binding_power(op);
-            let rhs = expr_bp(lexer, r_bp)?;
+            let rhs = match expr_bp(lexer, r_bp)? {
+                Ok(rhs) => rhs,
+                Err(token) => Err(token.error(format!(
+                    "expected operand for unary operator got {:?}",
+                    token.inner
+                )))?,
+            };
             token.map(|_| Expr::UnOp(Box::new(UnOp { op, rhs })))
         }
-        inner => Err(token.error(format!("expected atom, operator or '(' got {inner:?}")))?,
+        _ => return Ok(Err(token)),
     };
 
     loop {
@@ -43,7 +57,13 @@ fn expr_bp<'a>(lexer: &mut Lexer<'a>, min_bp: u8) -> Result<Loc<Expr<'a>>, Strin
             }
             lexer.next();
 
-            let rhs = expr_bp(lexer, r_bp)?;
+            let rhs = match expr_bp(lexer, r_bp)? {
+                Ok(rhs) => rhs,
+                Err(token) => Err(token.error(format!(
+                    "expected right operand for binary operator got {:?}",
+                    token.inner
+                )))?,
+            };
             lhs = token.map(|_| Expr::BinOp(Box::new(BinOp { op, lhs, rhs })));
             continue;
         }
@@ -51,7 +71,7 @@ fn expr_bp<'a>(lexer: &mut Lexer<'a>, min_bp: u8) -> Result<Loc<Expr<'a>>, Strin
         break;
     }
 
-    Ok(lhs)
+    Ok(Ok(lhs))
 }
 
 fn prefix_binding_power(op: Op) -> ((), u8) {
@@ -69,7 +89,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         Op::And => (6, 5),
         Op::Less | Op::Greater => (8, 9),
         Op::Plus | Op::Minus => (12, 11),
-        Op::Asterisk | Op::Slash => (14, 13),
+        Op::Asterisk | Op::Solidus => (14, 13),
         _ => return None,
     };
     Some(res)
@@ -106,7 +126,7 @@ impl<'a> Atom<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LetIn<'a> {
     pub term: Loc<&'a str>,
-    pub definition: Loc<Atom<'a>>,
+    pub definition: Loc<Expr<'a>>,
     pub expr: Loc<Expr<'a>>,
 }
 
@@ -120,11 +140,11 @@ impl<'a> LetIn<'a> {
 
         let token = lexer.next().unwrap()?;
         match &token.inner {
-            Token::EqualSign => {}
+            Token::Equal => {}
             inner => Err(token.error(&format!("expected '=' got {inner:?}")))?,
         };
 
-        let definition = Atom::parse(lexer)?;
+        let definition = Expr::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
         match &token.inner {
@@ -142,35 +162,6 @@ impl<'a> LetIn<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Comparator {
-    LessThan,
-    GreaterThan,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Cond<'a> {
-    pub left: Loc<Atom<'a>>,
-    pub comparator: Loc<Comparator>,
-    pub right: Loc<Atom<'a>>,
-}
-
-impl<'a> Cond<'a> {
-    pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
-        let lhs = Atom::parse(lexer)?.map(Expr::Atom);
-
-        let token = lexer.next().unwrap()?;
-        let op = match &token.inner {
-            Token::Op(op @ Op::Greater) | Token::Op(op @ Op::Less) => *op,
-            inner => Err(token.error(&format!("expected comparator got {inner:?}")))?,
-        };
-
-        let rhs = Atom::parse(lexer)?.map(Expr::Atom);
-
-        Ok(token.map(|_| Expr::BinOp(Box::new(BinOp { op, lhs, rhs }))))
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfElse<'a> {
     pub cond: Loc<Expr<'a>>,
@@ -180,7 +171,7 @@ pub struct IfElse<'a> {
 
 impl<'a> IfElse<'a> {
     pub fn parse_body(lexer: &mut Lexer<'a>) -> Result<Self, String> {
-        let cond = Cond::parse(lexer)?;
+        let cond = Expr::parse(lexer)?;
 
         let token = lexer.next().unwrap()?;
         match &token.inner {
@@ -222,32 +213,33 @@ pub enum Expr<'a> {
     Atom(Atom<'a>),
     UnOp(Box<UnOp<'a>>),
     BinOp(Box<BinOp<'a>>),
-    //Cond(Cond<'a>),
     IfElse(Box<IfElse<'a>>),
     LetIn(Box<LetIn<'a>>),
 }
 
 impl<'a> Expr<'a> {
     pub fn try_parse(lexer: &mut Lexer<'a>) -> Result<Result<Loc<Self>, Loc<Token<'a>>>, String> {
-        match Atom::try_parse(lexer)? {
-            Ok(atom) => Ok(Ok(atom.map(Expr::Atom))),
-            Err(token) => match token.inner {
-                Token::If => {
-                    let body = IfElse::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::IfElse(Box::new(body)))))
-                }
-                Token::Let => {
-                    let body = LetIn::parse_body(lexer)?;
-                    Ok(Ok(token.map(|_| Expr::LetIn(Box::new(body)))))
-                }
-                _ => Ok(Err(token)),
-            },
+        let token = lexer.peek().unwrap()?;
+        match token.inner {
+            Token::If => {
+                lexer.next();
+                let body = IfElse::parse_body(lexer)?;
+                Ok(Ok(token.map(|_| Expr::IfElse(Box::new(body)))))
+            }
+            Token::Let => {
+                lexer.next();
+                let body = LetIn::parse_body(lexer)?;
+                Ok(Ok(token.map(|_| Expr::LetIn(Box::new(body)))))
+            }
+            _ => Ok(expr_bp(lexer, 0)?),
         }
     }
 
     pub fn parse(lexer: &mut Lexer<'a>) -> Result<Loc<Self>, String> {
-        Self::try_parse(lexer)?
-            .map_err(|token| token.error(format!("expected 'if' or atom got {:?}", token.inner)))
+        match Self::try_parse(lexer)? {
+            Ok(expr) => Ok(expr),
+            Err(token) => Err(token.error(format!("expected 'if' or atom got {:?}", token.inner))),
+        }
     }
 }
 
@@ -313,7 +305,7 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
-                definition: Atom::Float("3.14").loc(1, 10),
+                definition: Expr::Atom(Atom::Float("3.14")).loc(1, 10),
                 expr: Expr::Atom(Atom::Ident("foo")).loc(1, 18),
             }))
             .loc(1, 1)),
@@ -330,10 +322,10 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
-                definition: Atom::Float("3.14").loc(1, 10),
+                definition: Expr::Atom(Atom::Float("3.14")).loc(1, 10),
                 expr: Expr::LetIn(Box::new(LetIn {
                     term: "tau".loc(1, 22),
-                    definition: Atom::Float("6.28").loc(1, 28),
+                    definition: Expr::Atom(Atom::Float("6.28")).loc(1, 28),
                     expr: Expr::Atom(Atom::Ident("foo")).loc(1, 36),
                 }))
                 .loc(1, 18),
@@ -351,11 +343,12 @@ mod tests {
                 b"if elevation > 0.5 then brown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
-                cond: Cond {
-                    left: Atom::Ident("elevation").loc(1, 4),
-                    comparator: Comparator::GreaterThan.loc(1, 14),
-                    right: Atom::Float("0.5").loc(1, 16),
-                },
+                cond: Expr::BinOp(Box::new(BinOp {
+                    op: Op::Greater,
+                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
+                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                }))
+                .loc(1, 14),
                 if_true: Expr::Atom(Atom::Ident("brown")).loc(1, 25),
                 if_false: Expr::Atom(Atom::Ident("cyan")).loc(1, 36),
             }))
@@ -372,22 +365,22 @@ mod tests {
                 b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
-                cond: Cond {
-                left: Atom::Ident("elevation").loc(1, 4),
-                comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Atom::Float("0.5").loc(1, 16),
-                },
+                cond: Expr::BinOp(Box::new(BinOp {
+                    op: Op::Greater,
+                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
+                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                })).loc(1, 14),
                 if_true: Expr::Atom(Atom::Ident("cyan")).loc(1, 25),
                 if_false: Expr::IfElse(Box::new(IfElse {
-                        cond: Cond {
-                        left: Atom::Ident("humidity").loc(1, 38),
-                        comparator: Comparator::LessThan.loc(1, 47),
-                        right: Atom::Float("0.31").loc(1, 49),
-                        },
-                        if_true: Expr::Atom(Atom::Ident("sandybrown")).loc(1, 59),
-                        if_false: Expr::Atom(Atom::Ident("rosybrown")).loc(1, 75),
-                    }))
-                    .loc(1, 35),
+                    cond: Expr::BinOp(Box::new(BinOp {
+                        op: Op::Less,
+                        lhs: Expr::Atom(Atom::Ident("humidity")).loc(1, 38),
+                        rhs: Expr::Atom(Atom::Float("0.31")).loc(1, 49),
+                    })).loc(1,47),
+                    if_true: Expr::Atom(Atom::Ident("sandybrown")).loc(1, 59),
+                    if_false: Expr::Atom(Atom::Ident("rosybrown")).loc(1, 75),
+                }))
+                .loc(1, 35),
             }))
             .loc(1, 1)),
         );
@@ -402,17 +395,17 @@ mod tests {
                 b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
-                cond: Cond {
-                left: Atom::Ident("elevation").loc(1, 4),
-                comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Atom::Float("0.5").loc(1, 16),
-                },
+                cond: Expr::BinOp(Box::new(BinOp {
+                    op: Op::Greater,
+                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
+                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                })).loc(1, 14),
                 if_true: Expr::IfElse(Box::new(IfElse {
-                        cond: Cond {
-                        left: Atom::Ident("humidity").loc(1, 28),
-                        comparator: Comparator::LessThan.loc(1, 37),
-                        right: Atom::Float("0.31").loc(1, 39),
-                        },
+                        cond: Expr::BinOp(Box::new(BinOp {
+                            op: Op::Less,
+                            lhs: Expr::Atom(Atom::Ident("humidity")).loc(1, 28),
+                            rhs: Expr::Atom(Atom::Float("0.31")).loc(1, 39),
+                        })).loc(1, 37),
                         if_true: Expr::Atom(Atom::Ident("sandybrown")).loc(1, 49),
                         if_false: Expr::Atom(Atom::Ident("rosybrown")).loc(1, 65),
                     }))
@@ -433,10 +426,10 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "peak".loc(1, 5),
-                definition: Atom::Hexcode("A38983").loc(1, 12),
+                definition: Expr::Atom(Atom::Hexcode("A38983")).loc(1, 12),
                 expr: Expr::LetIn(Box::new(LetIn {
                     term: "mountain".loc(2, 5),
-                    definition: Atom::Hexcode("805C54").loc(2, 16),
+                    definition: Expr::Atom(Atom::Hexcode("805C54")).loc(2, 16),
                     expr: Expr::Atom(Atom::Hexcode("123456")).loc(3, 1),
                 }))
                 .loc(2, 1),
