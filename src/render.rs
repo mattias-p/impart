@@ -1,15 +1,14 @@
 use palette::Pixel;
 
 use crate::generate::Cell;
-use crate::ir::Color;
-use crate::ir::TyExpr;
+use crate::ir;
 
 pub struct Renderer {
-    expr: TyExpr<Color>,
+    expr: ir::Expr<ir::Color>,
 }
 
 impl Renderer {
-    pub fn new(expr: TyExpr<Color>) -> Self {
+    pub fn new(expr: ir::Expr<ir::Color>) -> Self {
         Renderer { expr }
     }
 

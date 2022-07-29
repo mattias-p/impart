@@ -66,29 +66,12 @@ impl Type for Bool {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum BoolOp {
-    Greater {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
-    Less {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
-    Not {
-        rhs: TyExpr<Bool>,
-    },
-    And {
-        lhs: TyExpr<Bool>,
-        rhs: TyExpr<Bool>,
-    },
-    Xor {
-        lhs: TyExpr<Bool>,
-        rhs: TyExpr<Bool>,
-    },
-    Or {
-        lhs: TyExpr<Bool>,
-        rhs: TyExpr<Bool>,
-    },
+    Greater { lhs: Expr<Float>, rhs: Expr<Float> },
+    Less { lhs: Expr<Float>, rhs: Expr<Float> },
+    Not { rhs: Expr<Bool> },
+    And { lhs: Expr<Bool>, rhs: Expr<Bool> },
+    Xor { lhs: Expr<Bool>, rhs: Expr<Bool> },
+    Or { lhs: Expr<Bool>, rhs: Expr<Bool> },
 }
 impl TypeOp for BoolOp {
     type Repr = bool;
@@ -128,25 +111,11 @@ impl Type for Float {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FloatOp {
     Variable(Variable),
-    Neg {
-        rhs: TyExpr<Float>,
-    },
-    Mul {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
-    Div {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
-    Add {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
-    Sub {
-        lhs: TyExpr<Float>,
-        rhs: TyExpr<Float>,
-    },
+    Neg { rhs: Expr<Float> },
+    Mul { lhs: Expr<Float>, rhs: Expr<Float> },
+    Div { lhs: Expr<Float>, rhs: Expr<Float> },
+    Add { lhs: Expr<Float>, rhs: Expr<Float> },
+    Sub { lhs: Expr<Float>, rhs: Expr<Float> },
 }
 impl TypeOp for FloatOp {
     type Repr = f32;
@@ -166,9 +135,9 @@ impl TypeOp for FloatOp {
 
 #[derive(Clone, Debug)]
 pub enum AnyExpr {
-    Bool(TyExpr<Bool>),
-    Color(TyExpr<Color>),
-    Float(TyExpr<Float>),
+    Bool(Expr<Bool>),
+    Color(Expr<Color>),
+    Float(Expr<Float>),
 }
 
 impl AnyExpr {
@@ -182,41 +151,45 @@ impl AnyExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TyExpr<T: Type> {
+pub enum Expr<T: Type> {
     Imm(T::Repr),
     IfThenElse(Box<IfThenElse<T>>),
     TypeOp(Box<T::Op>),
 }
 
-impl<T: Type> TyExpr<T> {
+impl<T: Type> Expr<T> {
     pub fn eval(&self, cell: Cell) -> T::Repr {
         match self {
-            TyExpr::Imm(value) => *value,
-            TyExpr::IfThenElse(if_then_else) => {
+            Expr::Imm(value) => *value,
+            Expr::IfThenElse(if_then_else) => {
                 if if_then_else.cond.eval(cell) {
                     if_then_else.if_true.eval(cell)
                 } else {
                     if_then_else.if_false.eval(cell)
                 }
             }
-            TyExpr::TypeOp(op) => op.eval(cell),
+            Expr::TypeOp(op) => op.eval(cell),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfThenElse<T: Type> {
-    pub cond: TyExpr<Bool>,
-    pub if_true: TyExpr<T>,
-    pub if_false: TyExpr<T>,
+    pub cond: Expr<Bool>,
+    pub if_true: Expr<T>,
+    pub if_false: Expr<T>,
 }
 
 #[derive(Debug)]
-pub struct Compiler<'a> {
-    next: Option<(&'a str, Loc<AnyExpr>, &'a Compiler<'a>)>,
+pub struct SymTable<'a> {
+    next: Option<(&'a str, Loc<AnyExpr>, &'a SymTable<'a>)>,
 }
 
-impl<'a> Compiler<'a> {
+impl<'a> SymTable<'a> {
+    pub fn new() -> Self {
+        SymTable { next: None }
+    }
+
     pub fn symbol(&self, sym: &str) -> Option<Loc<AnyExpr>> {
         match &self.next {
             Some((s, def, next)) => {
@@ -230,24 +203,24 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn define(&self, sym: Loc<&'a str>, def: AnyExpr) -> Compiler<'_> {
-        Compiler {
+    pub fn with_def(&self, sym: Loc<&'a str>, def: AnyExpr) -> SymTable<'_> {
+        SymTable {
             next: Some((sym.inner, sym.map(|_| def), self)),
         }
     }
 
     pub fn any_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
         match &expr.inner {
-            ast::Expr::True => Ok((AnyExpr::Bool(TyExpr::Imm(true)), Source::Inline)),
-            ast::Expr::False => Ok((AnyExpr::Bool(TyExpr::Imm(false)), Source::Inline)),
+            ast::Expr::True => Ok((AnyExpr::Bool(Expr::Imm(true)), Source::Inline)),
+            ast::Expr::False => Ok((AnyExpr::Bool(Expr::Imm(false)), Source::Inline)),
             ast::Expr::Float(s) => {
                 let decoded = s.parse::<f32>().unwrap();
-                Ok((AnyExpr::Float(TyExpr::Imm(decoded)), Source::Inline))
+                Ok((AnyExpr::Float(Expr::Imm(decoded)), Source::Inline))
             }
             ast::Expr::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 Ok((
-                    AnyExpr::Color(TyExpr::Imm(Srgb::<u8>::from_u32::<Argb>(argb))),
+                    AnyExpr::Color(Expr::Imm(Srgb::<u8>::from_u32::<Argb>(argb))),
                     Source::Inline,
                 ))
             }
@@ -255,19 +228,19 @@ impl<'a> Compiler<'a> {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
                 None => match *s {
                     "elevation" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
                             Variable::Elevation,
                         )))),
                         Source::Prelude,
                     )),
                     "humidity" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
                             Variable::Humidity,
                         )))),
                         Source::Prelude,
                     )),
                     "temperature" => Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Variable(
                             Variable::Temperature,
                         )))),
                         Source::Prelude,
@@ -278,20 +251,20 @@ impl<'a> Compiler<'a> {
             ast::Expr::LetIn(inner) => {
                 let (def, _) = self.any_expr(&inner.definition)?;
                 let def = inner.term.map(|_| def);
-                self.define(inner.term, def.inner).any_expr(&inner.expr)
+                self.with_def(inner.term, def.inner).any_expr(&inner.expr)
             }
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Not { rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Not { rhs }))),
                         Source::Inline,
                     ))
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Neg { rhs }))),
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Neg { rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -302,7 +275,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Mul { lhs, rhs }))),
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Mul { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -310,7 +283,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Div { lhs, rhs }))),
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Div { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -318,7 +291,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Add { lhs, rhs }))),
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Add { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -326,7 +299,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Sub { lhs, rhs }))),
+                        AnyExpr::Float(Expr::TypeOp(Box::new(FloatOp::Sub { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -334,7 +307,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Less { lhs, rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Less { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -342,7 +315,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Greater { lhs, rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Greater { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -350,7 +323,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::And { lhs, rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::And { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -358,7 +331,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Xor { lhs, rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Xor { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -366,7 +339,7 @@ impl<'a> Compiler<'a> {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
                     Ok((
-                        AnyExpr::Bool(TyExpr::TypeOp(Box::new(BoolOp::Or { lhs, rhs }))),
+                        AnyExpr::Bool(Expr::TypeOp(Box::new(BoolOp::Or { lhs, rhs }))),
                         Source::Inline,
                     ))
                 }
@@ -377,9 +350,9 @@ impl<'a> Compiler<'a> {
                 let (if_true, _) = self.any_expr(&inner.if_true)?;
                 let (if_false, _) = self.any_expr(&inner.if_false)?;
                 match (if_true, if_false) {
-                    (AnyExpr::Bool(if_true), AnyExpr::Bool(if_false)) => Ok((AnyExpr::Bool(TyExpr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
-                    (AnyExpr::Color(if_true), AnyExpr::Color(if_false)) => Ok((AnyExpr::Color(TyExpr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
-                    (AnyExpr::Float(if_true), AnyExpr::Float(if_false)) => Ok((AnyExpr::Float(TyExpr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
+                    (AnyExpr::Bool(if_true), AnyExpr::Bool(if_false)) => Ok((AnyExpr::Bool(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
+                    (AnyExpr::Color(if_true), AnyExpr::Color(if_false)) => Ok((AnyExpr::Color(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
+                    (AnyExpr::Float(if_true), AnyExpr::Float(if_false)) => Ok((AnyExpr::Float(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
                     (if_true, if_false) => {
                         Err(format!("expression at {}:{} ({}) has a different type from expression at {}:{} ({})", inner.if_false.line, inner.if_false.col, if_false.get_type()
 , inner.if_true.line, inner.if_true.col, if_true.get_type()))
@@ -389,7 +362,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn bool_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Bool>, String> {
+    fn bool_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Bool>, String> {
         let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Bool(expr) => Ok(expr),
@@ -398,7 +371,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn color_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {
+    fn color_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Color>, String> {
         let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Color(expr) => Ok(expr),
@@ -407,7 +380,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn float_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Float>, String> {
+    fn float_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Float>, String> {
         let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Float(expr) => Ok(expr),
@@ -417,9 +390,8 @@ impl<'a> Compiler<'a> {
     }
 }
 
-pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {
-    let compiler = Compiler { next: None };
-    compiler.color_expr(expr)
+pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<Expr<Color>, String> {
+    SymTable::new().color_expr(expr)
 }
 
 #[cfg(test)]
@@ -428,7 +400,7 @@ mod tests {
 
     use crate::lexer::Lexer;
 
-    fn check(corpus: &[u8]) -> Result<TyExpr<Color>, String> {
+    fn check(corpus: &[u8]) -> Result<Expr<Color>, String> {
         let mut lexer = Lexer::new(corpus);
         let ast = ast::parse(&mut lexer)?;
         compile(&ast)
@@ -441,20 +413,20 @@ mod tests {
 
     #[test]
     fn hexcode() {
-        assert_eq!(check(b"#fc9630"), Ok(TyExpr::Imm(color("fc9630"))));
+        assert_eq!(check(b"#fc9630"), Ok(Expr::Imm(color("fc9630"))));
     }
     #[test]
     fn let_in() {
         assert_eq!(
             check(b"let brown = #123456 in\nbrown"),
-            Ok(TyExpr::Imm(color("123456"))),
+            Ok(Expr::Imm(color("123456"))),
         );
     }
     #[test]
     fn let_in_let_in() {
         assert_eq!(
             check(b"let foo = #123456 in\nlet foo = #654321 in\nfoo"),
-            Ok(TyExpr::Imm(color("654321"))),
+            Ok(Expr::Imm(color("654321"))),
         );
     }
 }
