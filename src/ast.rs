@@ -283,9 +283,11 @@ mod tests {
                 b"if elevation > 0.5 then brown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
-                left: Value::Ident("elevation").loc(1, 4),
-                comparator: Comparator::GreaterThan.loc(1, 14),
-                right: Value::Float("0.5").loc(1, 16),
+                cond: Cond {
+                    left: Value::Ident("elevation").loc(1, 4),
+                    comparator: Comparator::GreaterThan.loc(1, 14),
+                    right: Value::Float("0.5").loc(1, 16),
+                },
                 if_true: Expr::Value(Value::Ident("brown")).loc(1, 25),
                 if_false: Expr::Value(Value::Ident("cyan")).loc(1, 36),
             }))
@@ -302,14 +304,18 @@ mod tests {
                 b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
+                cond: Cond {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Float("0.5").loc(1, 16),
+                },
                 if_true: Expr::Value(Value::Ident("cyan")).loc(1, 25),
                 if_false: Expr::IfElse(Box::new(IfElse {
+                        cond: Cond {
                         left: Value::Ident("humidity").loc(1, 38),
                         comparator: Comparator::LessThan.loc(1, 47),
                         right: Value::Float("0.31").loc(1, 49),
+                        },
                         if_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 59),
                         if_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 75),
                     }))
@@ -328,13 +334,17 @@ mod tests {
                 b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
+                cond: Cond {
                 left: Value::Ident("elevation").loc(1, 4),
                 comparator: Comparator::GreaterThan.loc(1, 14),
                 right: Value::Float("0.5").loc(1, 16),
+                },
                 if_true: Expr::IfElse(Box::new(IfElse {
+                        cond: Cond {
                         left: Value::Ident("humidity").loc(1, 28),
                         comparator: Comparator::LessThan.loc(1, 37),
                         right: Value::Float("0.31").loc(1, 39),
+                        },
                         if_true: Expr::Value(Value::Ident("sandybrown")).loc(1, 49),
                         if_false: Expr::Value(Value::Ident("rosybrown")).loc(1, 65),
                     }))

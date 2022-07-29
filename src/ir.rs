@@ -49,7 +49,7 @@ impl fmt::Display for TyKind {
 
 pub trait Type {
     type Repr: Clone + Copy + fmt::Debug + PartialEq;
-    type Op: TypeOp<Repr=Self::Repr>;
+    type Op: TypeOp<Repr = Self::Repr>;
 }
 
 pub trait TypeOp: Clone + fmt::Debug + PartialEq {
@@ -79,7 +79,7 @@ impl TypeOp for BoolOp {
     fn eval(&self, cell: Cell) -> Self::Repr {
         match self {
             BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
-            BoolOp::Less{ lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
+            BoolOp::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
         }
     }
 }
@@ -120,7 +120,7 @@ impl TypeOp for FloatOp {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AnyExpr {
     Bool(TyExpr<Bool>),
     Color(TyExpr<Color>),
@@ -232,6 +232,7 @@ pub struct IfThenElse<T: Type> {
     pub if_false: TyExpr<T>,
 }
 
+#[derive(Debug)]
 pub struct Compiler<'a> {
     next: Option<(&'a str, Loc<AnyExpr>, &'a Compiler<'a>)>,
 }
@@ -312,11 +313,7 @@ impl<'a> Compiler<'a> {
                     ast::Comparator::GreaterThan => BoolOp::Greater { lhs, rhs },
                     ast::Comparator::LessThan => BoolOp::Less { lhs, rhs },
                 };
-                let cond = inner
-                    .cond
-                    .comparator
-                    .map(|_| TyExpr::TypeOp(op))
-                    .inner;
+                let cond = inner.cond.comparator.map(|_| TyExpr::TypeOp(op)).inner;
                 let (if_true, _) = self.untyped_ast_expr(&inner.if_true)?;
                 let (if_false, _) = self.untyped_ast_expr(&inner.if_false)?;
                 match (if_true, if_false) {
@@ -330,5 +327,47 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
+    }
+}
+
+pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {
+    let compiler = Compiler { next: None };
+    compiler.typed_ast_expr(expr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::lexer::Lexer;
+
+    fn check(corpus: &[u8]) -> Result<TyExpr<Color>, String> {
+        let mut lexer = Lexer::new(corpus);
+        let ast = ast::parse(&mut lexer)?;
+        compile(&ast)
+    }
+
+    fn color(hexcode: &str) -> Srgb<u8> {
+        let hexcode = u32::from_str_radix(hexcode, 16).unwrap();
+        Srgb::from_u32::<Argb>(hexcode)
+    }
+
+    #[test]
+    fn hexcode() {
+        assert_eq!(check(b"#fc9630"), Ok(TyExpr::Imm(color("fc9630"))));
+    }
+    #[test]
+    fn let_in() {
+        assert_eq!(
+            check(b"let brown = #123456 in\nbrown"),
+            Ok(TyExpr::Imm(color("123456"))),
+        );
+    }
+    #[test]
+    fn let_in_let_in() {
+        assert_eq!(
+            check(b"let foo = #123456 in\nlet foo = #654321 in\nfoo"),
+            Ok(TyExpr::Imm(color("654321"))),
+        );
     }
 }
