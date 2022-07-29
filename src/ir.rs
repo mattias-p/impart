@@ -236,27 +236,24 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn untyped_ast_atom(
-        &self,
-        value: &Loc<ast::Atom<'a>>,
-    ) -> Result<(AnyExpr, Source), String> {
-        match value.inner {
-            ast::Atom::True => Ok((AnyExpr::Bool(TyExpr::Imm(true)), Source::Inline)),
-            ast::Atom::False => Ok((AnyExpr::Bool(TyExpr::Imm(false)), Source::Inline)),
-            ast::Atom::Float(s) => {
+    pub fn any_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
+        match &expr.inner {
+            ast::Expr::True => Ok((AnyExpr::Bool(TyExpr::Imm(true)), Source::Inline)),
+            ast::Expr::False => Ok((AnyExpr::Bool(TyExpr::Imm(false)), Source::Inline)),
+            ast::Expr::Float(s) => {
                 let decoded = s.parse::<f32>().unwrap();
                 Ok((AnyExpr::Float(TyExpr::Imm(decoded)), Source::Inline))
             }
-            ast::Atom::Hexcode(s) => {
+            ast::Expr::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 Ok((
                     AnyExpr::Color(TyExpr::Imm(Srgb::<u8>::from_u32::<Argb>(argb))),
                     Source::Inline,
                 ))
             }
-            ast::Atom::Ident(s) => match self.symbol(s) {
+            ast::Expr::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
-                None => match s {
+                None => match *s {
                     "elevation" => Ok((
                         AnyExpr::Float(TyExpr::TypeOp(Box::new(FloatOp::Variable(
                             Variable::Elevation,
@@ -275,20 +272,13 @@ impl<'a> Compiler<'a> {
                         )))),
                         Source::Prelude,
                     )),
-                    _ => Err(value.error(format!("use of undeclared identifier"))),
+                    _ => Err(expr.error(format!("use of undeclared identifier"))),
                 },
             },
-        }
-    }
-
-    pub fn untyped_ast_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
-        match &expr.inner {
-            ast::Expr::Atom(atom) => self.untyped_ast_atom(&expr.clone().map(|_| atom.clone())),
             ast::Expr::LetIn(inner) => {
-                let (def, _) = self.untyped_ast_expr(&inner.definition)?;
+                let (def, _) = self.any_expr(&inner.definition)?;
                 let def = inner.term.map(|_| def);
-                self.define(inner.term, def.inner)
-                    .untyped_ast_expr(&inner.expr)
+                self.define(inner.term, def.inner).any_expr(&inner.expr)
             }
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
@@ -384,8 +374,8 @@ impl<'a> Compiler<'a> {
             },
             ast::Expr::IfElse(inner) => {
                 let cond = self.bool_expr(&inner.cond)?;
-                let (if_true, _) = self.untyped_ast_expr(&inner.if_true)?;
-                let (if_false, _) = self.untyped_ast_expr(&inner.if_false)?;
+                let (if_true, _) = self.any_expr(&inner.if_true)?;
+                let (if_false, _) = self.any_expr(&inner.if_false)?;
                 match (if_true, if_false) {
                     (AnyExpr::Bool(if_true), AnyExpr::Bool(if_false)) => Ok((AnyExpr::Bool(TyExpr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
                     (AnyExpr::Color(if_true), AnyExpr::Color(if_false)) => Ok((AnyExpr::Color(TyExpr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
@@ -400,7 +390,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn bool_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Bool>, String> {
-        let (def, source) = self.untyped_ast_expr(value)?;
+        let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Bool(expr) => Ok(expr),
             AnyExpr::Float(_) => Err(source.error("expected bool got float")),
@@ -409,7 +399,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn color_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {
-        let (def, source) = self.untyped_ast_expr(value)?;
+        let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Color(expr) => Ok(expr),
             AnyExpr::Bool(_) => Err(source.error("expected color got bool")),
@@ -418,14 +408,13 @@ impl<'a> Compiler<'a> {
     }
 
     fn float_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<TyExpr<Float>, String> {
-        let (def, source) = self.untyped_ast_expr(value)?;
+        let (def, source) = self.any_expr(value)?;
         match def {
             AnyExpr::Float(expr) => Ok(expr),
             AnyExpr::Bool(_) => Err(source.error("expected float got bool")),
             AnyExpr::Color(_) => Err(source.error("expected float got color")),
         }
     }
-
 }
 
 pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<TyExpr<Color>, String> {

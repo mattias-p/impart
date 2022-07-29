@@ -9,11 +9,11 @@ fn expr_bp<'a>(
 ) -> Result<Result<Loc<Expr<'a>>, Loc<Token<'a>>>, String> {
     let token = lexer.next().unwrap()?;
     let mut lhs = match token.inner {
-        Token::True => token.map(|_| Expr::Atom(Atom::True)),
-        Token::False => token.map(|_| Expr::Atom(Atom::False)),
-        Token::Decimal(s) => token.map(|_| Expr::Atom(Atom::Float(s))),
-        Token::Hexcode(s) => token.map(|_| Expr::Atom(Atom::Hexcode(s))),
-        Token::Ident(s) => token.map(|_| Expr::Atom(Atom::Ident(s))),
+        Token::True => token.map(|_| Expr::True),
+        Token::False => token.map(|_| Expr::False),
+        Token::Decimal(s) => token.map(|_| Expr::Float(s)),
+        Token::Hexcode(s) => token.map(|_| Expr::Hexcode(s)),
+        Token::Ident(s) => token.map(|_| Expr::Ident(s)),
         Token::If => {
             let body = IfElse::parse_body(lexer)?;
             token.map(|_| Expr::IfElse(Box::new(body)))
@@ -173,15 +173,6 @@ impl<'a> IfElse<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Atom<'a> {
-    True,
-    False,
-    Float(&'a str),
-    Hexcode(&'a str),
-    Ident(&'a str),
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnOp<'a> {
     pub op: Op,
@@ -197,7 +188,11 @@ pub struct BinOp<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
-    Atom(Atom<'a>),
+    True,
+    False,
+    Float(&'a str),
+    Hexcode(&'a str),
+    Ident(&'a str),
     UnOp(Box<UnOp<'a>>),
     BinOp(Box<BinOp<'a>>),
     IfElse(Box<IfElse<'a>>),
@@ -242,7 +237,7 @@ mod tests {
                 //1234567
                 b"3.14",
             )),
-            Ok(Expr::Atom(Atom::Float("3.14")).loc(1, 1)),
+            Ok(Expr::Float("3.14").loc(1, 1)),
         );
     }
 
@@ -253,7 +248,7 @@ mod tests {
                 //1234567
                 b"#123456",
             )),
-            Ok(Expr::Atom(Atom::Hexcode("123456")).loc(1, 1)),
+            Ok(Expr::Hexcode("123456").loc(1, 1)),
         );
     }
 
@@ -264,7 +259,7 @@ mod tests {
                 //123
                 b"foo",
             )),
-            Ok(Expr::Atom(Atom::Ident("foo")).loc(1, 1)),
+            Ok(Expr::Ident("foo").loc(1, 1)),
         );
     }
 
@@ -278,8 +273,8 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
-                definition: Expr::Atom(Atom::Float("3.14")).loc(1, 10),
-                expr: Expr::Atom(Atom::Ident("foo")).loc(1, 18),
+                definition: Expr::Float("3.14").loc(1, 10),
+                expr: Expr::Ident("foo").loc(1, 18),
             }))
             .loc(1, 1)),
         );
@@ -295,11 +290,11 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
-                definition: Expr::Atom(Atom::Float("3.14")).loc(1, 10),
+                definition: Expr::Float("3.14").loc(1, 10),
                 expr: Expr::LetIn(Box::new(LetIn {
                     term: "tau".loc(1, 22),
-                    definition: Expr::Atom(Atom::Float("6.28")).loc(1, 28),
-                    expr: Expr::Atom(Atom::Ident("foo")).loc(1, 36),
+                    definition: Expr::Float("6.28").loc(1, 28),
+                    expr: Expr::Ident("foo").loc(1, 36),
                 }))
                 .loc(1, 18),
             }))
@@ -318,12 +313,12 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
-                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 16),
                 }))
                 .loc(1, 14),
-                if_true: Expr::Atom(Atom::Ident("brown")).loc(1, 25),
-                if_false: Expr::Atom(Atom::Ident("cyan")).loc(1, 36),
+                if_true: Expr::Ident("brown").loc(1, 25),
+                if_false: Expr::Ident("cyan").loc(1, 36),
             }))
             .loc(1, 1)),
         );
@@ -340,18 +335,18 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
-                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 16),
                 })).loc(1, 14),
-                if_true: Expr::Atom(Atom::Ident("cyan")).loc(1, 25),
+                if_true: Expr::Ident("cyan").loc(1, 25),
                 if_false: Expr::IfElse(Box::new(IfElse {
                     cond: Expr::BinOp(Box::new(BinOp {
                         op: Op::Less,
-                        lhs: Expr::Atom(Atom::Ident("humidity")).loc(1, 38),
-                        rhs: Expr::Atom(Atom::Float("0.31")).loc(1, 49),
+                        lhs: Expr::Ident("humidity").loc(1, 38),
+                        rhs: Expr::Float("0.31").loc(1, 49),
                     })).loc(1,47),
-                    if_true: Expr::Atom(Atom::Ident("sandybrown")).loc(1, 59),
-                    if_false: Expr::Atom(Atom::Ident("rosybrown")).loc(1, 75),
+                    if_true: Expr::Ident("sandybrown").loc(1, 59),
+                    if_false: Expr::Ident("rosybrown").loc(1, 75),
                 }))
                 .loc(1, 35),
             }))
@@ -370,20 +365,20 @@ mod tests {
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Atom(Atom::Ident("elevation")).loc(1, 4),
-                    rhs: Expr::Atom(Atom::Float("0.5")).loc(1, 16),
+                    lhs: Expr::Ident("elevation").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 16),
                 })).loc(1, 14),
                 if_true: Expr::IfElse(Box::new(IfElse {
                         cond: Expr::BinOp(Box::new(BinOp {
                             op: Op::Less,
-                            lhs: Expr::Atom(Atom::Ident("humidity")).loc(1, 28),
-                            rhs: Expr::Atom(Atom::Float("0.31")).loc(1, 39),
+                            lhs: Expr::Ident("humidity").loc(1, 28),
+                            rhs: Expr::Float("0.31").loc(1, 39),
                         })).loc(1, 37),
-                        if_true: Expr::Atom(Atom::Ident("sandybrown")).loc(1, 49),
-                        if_false: Expr::Atom(Atom::Ident("rosybrown")).loc(1, 65),
+                        if_true: Expr::Ident("sandybrown").loc(1, 49),
+                        if_false: Expr::Ident("rosybrown").loc(1, 65),
                     }))
                     .loc(1, 25),
-                if_false: Expr::Atom(Atom::Ident("cyan")).loc(1, 80),
+                if_false: Expr::Ident("cyan").loc(1, 80),
             }))
             .loc(1, 1)),
         );
@@ -399,11 +394,11 @@ mod tests {
             )),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "peak".loc(1, 5),
-                definition: Expr::Atom(Atom::Hexcode("A38983")).loc(1, 12),
+                definition: Expr::Hexcode("A38983").loc(1, 12),
                 expr: Expr::LetIn(Box::new(LetIn {
                     term: "mountain".loc(2, 5),
-                    definition: Expr::Atom(Atom::Hexcode("805C54")).loc(2, 16),
-                    expr: Expr::Atom(Atom::Hexcode("123456")).loc(3, 1),
+                    definition: Expr::Hexcode("805C54").loc(2, 16),
+                    expr: Expr::Hexcode("123456").loc(3, 1),
                 }))
                 .loc(2, 1),
             }))
