@@ -10,9 +10,6 @@ fn expr_bp<'a>(
 ) -> Result<Result<Loc<Expr<'a>>, Loc<Token<'a>>>, String> {
     let token = lexer.next().unwrap()?;
     let mut lhs = match token.inner {
-        Token::Elevation => token.map(|_| Expr::Elevation),
-        Token::Humidity => token.map(|_| Expr::Humidity),
-        Token::Temperature => token.map(|_| Expr::Temperature),
         Token::True => token.map(|_| Expr::True),
         Token::False => token.map(|_| Expr::False),
         Token::Decimal(s) => token.map(|_| Expr::Float(s)),
@@ -275,9 +272,6 @@ pub struct BinOp<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
-    Elevation,
-    Humidity,
-    Temperature,
     Constructor(Constructor<'a>),
     True,
     False,
@@ -399,17 +393,17 @@ mod tests {
             parse(&mut Lexer::new(
                 //         1         2         3
                 //123456789012345678901234567890123456789
-                b"if elevation > 0.5 then brown else cyan",
+                b"if 0.6 > 0.5 then brown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Elevation.loc(1, 4),
-                    rhs: Expr::Float("0.5").loc(1, 16),
+                    lhs: Expr::Float("0.6").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 10),
                 }))
-                .loc(1, 14),
-                if_true: Expr::Ident("brown").loc(1, 25),
-                if_false: Expr::Ident("cyan").loc(1, 36),
+                .loc(1, 8),
+                if_true: Expr::Ident("brown").loc(1, 19),
+                if_false: Expr::Ident("cyan").loc(1, 30),
             }))
             .loc(1, 1)),
         );
@@ -421,25 +415,27 @@ mod tests {
             parse(&mut Lexer::new(
                 //         1         2         3         4         5         6         7         8
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
-                b"if elevation > 0.5 then cyan else if humidity < 0.31 then sandybrown else rosybrown"
+                b"if 0.6 > 0.5 then cyan else if 0.4 < 0.31 then sandybrown else rosybrown"
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Elevation.loc(1, 4),
-                    rhs: Expr::Float("0.5").loc(1, 16),
-                })).loc(1, 14),
-                if_true: Expr::Ident("cyan").loc(1, 25),
+                    lhs: Expr::Float("0.6").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 10),
+                }))
+                .loc(1, 8),
+                if_true: Expr::Ident("cyan").loc(1, 19),
                 if_false: Expr::IfElse(Box::new(IfElse {
                     cond: Expr::BinOp(Box::new(BinOp {
                         op: Op::Less,
-                        lhs: Expr::Humidity.loc(1, 38),
-                        rhs: Expr::Float("0.31").loc(1, 49),
-                    })).loc(1,47),
-                    if_true: Expr::Ident("sandybrown").loc(1, 59),
-                    if_false: Expr::Ident("rosybrown").loc(1, 75),
+                        lhs: Expr::Float("0.4").loc(1, 32),
+                        rhs: Expr::Float("0.31").loc(1, 38),
+                    }))
+                    .loc(1, 36),
+                    if_true: Expr::Ident("sandybrown").loc(1, 48),
+                    if_false: Expr::Ident("rosybrown").loc(1, 64),
                 }))
-                .loc(1, 35),
+                .loc(1, 29),
             }))
             .loc(1, 1)),
         );
@@ -451,25 +447,27 @@ mod tests {
             parse(&mut Lexer::new(
                 //         1         2         3         4         5         6         7         8
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
-                b"if elevation > 0.5 then if humidity < 0.31 then sandybrown else rosybrown else cyan",
+                b"if 0.6 > 0.5 then if 0.4 < 0.31 then sandybrown else rosybrown else cyan",
             )),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
-                    lhs: Expr::Elevation.loc(1, 4),
-                    rhs: Expr::Float("0.5").loc(1, 16),
-                })).loc(1, 14),
+                    lhs: Expr::Float("0.6").loc(1, 4),
+                    rhs: Expr::Float("0.5").loc(1, 10),
+                }))
+                .loc(1, 8),
                 if_true: Expr::IfElse(Box::new(IfElse {
-                        cond: Expr::BinOp(Box::new(BinOp {
-                            op: Op::Less,
-                            lhs: Expr::Humidity.loc(1, 28),
-                            rhs: Expr::Float("0.31").loc(1, 39),
-                        })).loc(1, 37),
-                        if_true: Expr::Ident("sandybrown").loc(1, 49),
-                        if_false: Expr::Ident("rosybrown").loc(1, 65),
+                    cond: Expr::BinOp(Box::new(BinOp {
+                        op: Op::Less,
+                        lhs: Expr::Float("0.4").loc(1, 22),
+                        rhs: Expr::Float("0.31").loc(1, 28),
                     }))
-                    .loc(1, 25),
-                if_false: Expr::Ident("cyan").loc(1, 80),
+                    .loc(1, 26),
+                    if_true: Expr::Ident("sandybrown").loc(1, 38),
+                    if_false: Expr::Ident("rosybrown").loc(1, 54),
+                }))
+                .loc(1, 19),
+                if_false: Expr::Ident("cyan").loc(1, 69),
             }))
             .loc(1, 1)),
         );

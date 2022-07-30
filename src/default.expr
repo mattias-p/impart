@@ -1,3 +1,5 @@
+let slope = 0.5 in
+
 let red       = #ff8888 in
 let deepred   = #ff0000 in
 let green     = #88ff88 in
@@ -5,18 +7,20 @@ let deepgreen = #00ff00 in
 let blue      = #8888ff in
 let deepblue  = #0000ff in
 
-let slope = 0.0 in
+let raw-elevation = Perlin { octaves : 6.0 ; frequency : 1.0  ; persistence : 0.5 } in
+let humidity      = Perlin { octaves : 4.0 ; frequency : 0.5 ; persistence : 0.5 } in
+let temperature   = Perlin { octaves : 4.0 ; frequency : 0.5 ; persistence : 0.5 } in
+let y             = Y { } in
 
-let y = Y { } in
-let E = ( 1.0 - slope ) * elevation + slope * y in
+let elevation = ( 1.0 - slope ) * raw-elevation + slope * y in
 
-let high = E   > humidity    and E   > temperature in
-let wet  = humidity    > temperature and humidity    > E   in
-let hot  = temperature > E   and temperature > humidity    in
+let high = elevation   > humidity    and elevation   > temperature in
+let wet  = humidity    > temperature and humidity    > elevation   in
+let hot  = temperature > elevation   and temperature > humidity    in
 
-let higher = high and 1.0 + E   > ( 2.0 + humidity    + temperature ) * 0.65 in
-let hotter = hot  and 1.0 + temperature > ( 2.0 + E   + humidity    ) * 0.65 in
-let wetter = wet  and 1.0 + humidity    > ( 2.0 + temperature + E   ) * 0.65 in
+let higher = high and 1.0 + elevation   > ( 2.0 + humidity    + temperature ) * 0.65 in
+let hotter = hot  and 1.0 + temperature > ( 2.0 + elevation   + humidity    ) * 0.65 in
+let wetter = wet  and 1.0 + humidity    > ( 2.0 + temperature + elevation   ) * 0.65 in
 
 if higher then deepblue  else
 if hotter then deepred   else

@@ -6,15 +6,11 @@ use palette::Srgb;
 
 use crate::ast;
 use crate::generate::Cell;
+use crate::generate::VarId;
 use crate::generate::VarSpec;
 use crate::lexer;
 use crate::lexer::Loc;
 use crate::lexer::Op;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VarId {
-    index: usize,
-}
 
 pub enum Source {
     Inline,
@@ -125,7 +121,7 @@ impl TypeOp for FloatOp {
     type Repr = f32;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            FloatOp::Variable(var) => cell.vars[var.index],
+            FloatOp::Variable(var) => cell.get(*var),
             FloatOp::Neg { rhs } => -rhs.eval(cell),
             FloatOp::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
             FloatOp::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
@@ -196,10 +192,6 @@ pub fn float_literal(literal: &Loc<ast::Literal>) -> Result<f32, String> {
     }
 }
 
-const ELEVATION: VarId = VarId { index: 0 };
-const HUMIDITY: VarId = VarId { index: 1 };
-const TEMPERATURE: VarId = VarId { index: 2 };
-
 #[derive(Debug)]
 pub enum SymTable<'a> {
     Vars {
@@ -215,11 +207,7 @@ pub enum SymTable<'a> {
 impl<'a> SymTable<'a> {
     pub fn new() -> Self {
         SymTable::Vars {
-            vars: RefCell::new(vec![
-                VarSpec::Elevation,
-                VarSpec::Humidity,
-                VarSpec::Temperature,
-            ]),
+            vars: RefCell::new(Vec::new()),
         }
     }
 
@@ -258,21 +246,13 @@ impl<'a> SymTable<'a> {
                 let mut vars = vars.borrow_mut();
                 let index = vars.len();
                 vars.push(spec);
-                VarId { index }
+                VarId::new(index)
             }
         }
     }
 
     pub fn any_expr(&self, expr: &'a Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
         match &expr.inner {
-            ast::Expr::Elevation => {
-                Ok((FloatOp::Variable(ELEVATION).into_anyexpr(), Source::Inline))
-            }
-            ast::Expr::Humidity => Ok((FloatOp::Variable(HUMIDITY).into_anyexpr(), Source::Inline)),
-            ast::Expr::Temperature => Ok((
-                FloatOp::Variable(TEMPERATURE).into_anyexpr(),
-                Source::Inline,
-            )),
             ast::Expr::True => Ok((AnyExpr::Bool(Expr::Imm(true)), Source::Inline)),
             ast::Expr::False => Ok((AnyExpr::Bool(Expr::Imm(false)), Source::Inline)),
             ast::Expr::Float(s) => {
@@ -305,7 +285,7 @@ impl<'a> SymTable<'a> {
                                 if value.fract().abs() > f32::EPSILON {
                                     Err(attr.value.error("octaves must be an integer"))?;
                                 }
-                                if value.fract() < 1.0 {
+                                if value < 1.0 {
                                     Err(attr.value.error("there must be at least one octave"))?;
                                 }
                                 octaves = Some(value.round());
@@ -485,7 +465,7 @@ mod tests {
     fn check(corpus: &[u8]) -> Result<Expr<Color>, String> {
         let mut lexer = Lexer::new(corpus);
         let ast = ast::parse(&mut lexer)?;
-        compile(&ast)
+        Ok(compile(&ast)?.0)
     }
 
     fn color(hexcode: &str) -> Srgb<u8> {

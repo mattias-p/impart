@@ -12,7 +12,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use clap::Parser;
-use noise::Fbm;
 
 use crate::generate::Generator;
 use crate::lexer::Lexer;
@@ -40,30 +39,6 @@ struct Cli {
     /// Random seed (0 means pseudo-random)
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
-
-    /// Elevation noise octave count
-    #[clap(long, default_value_t = Fbm::DEFAULT_OCTAVE_COUNT)]
-    elevation_octaves: usize,
-
-    /// Elevation noise frequency
-    #[clap(long, default_value_t = Fbm::DEFAULT_FREQUENCY)]
-    elevation_frequency: f64,
-
-    /// Elevation noise persistence
-    #[clap(long, default_value_t = Fbm::DEFAULT_PERSISTENCE)]
-    elevation_persistence: f64,
-
-    /// Noise octave count used for temperature and humidity
-    #[clap(long, default_value_t = Fbm::DEFAULT_OCTAVE_COUNT)]
-    climate_octaves: usize,
-
-    /// Noise frequency used for temperature and humidity
-    #[clap(long, default_value_t = Fbm::DEFAULT_FREQUENCY)]
-    climate_frequency: f64,
-
-    /// Noise persistence used for temperature and humidity
-    #[clap(long, default_value_t = Fbm::DEFAULT_PERSISTENCE)]
-    climate_persistence: f64,
 }
 
 fn main() {
@@ -85,14 +60,7 @@ fn main() {
     let (expr, vars) = ir::compile(&ast).unwrap();
 
     let renderer = Renderer::new(expr);
-
-    let generator = Generator::new(vars)
-        .set_elevation_octaves(cli.elevation_octaves)
-        .set_elevation_frequency(cli.elevation_frequency)
-        .set_elevation_persistence(cli.elevation_persistence)
-        .set_climate_octaves(cli.climate_octaves)
-        .set_climate_frequency(cli.climate_frequency)
-        .set_climate_persistence(cli.climate_persistence);
+    let generator = Generator::new(vars);
 
     let seed = if cli.seed == 0 {
         SystemTime::now()
