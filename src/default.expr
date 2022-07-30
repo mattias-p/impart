@@ -1,50 +1,21 @@
-case elevation < 0.375
+let red       = #ff8888 in
+let deepred   = #ff0000 in
+let green     = #88ff88 in
+let deepgreen = #00ff00 in
+let blue      = #8888ff in
+let deepblue  = #0000ff in
 
-    case temperature < 0.375
-        case humidity < 0.375  mediumblue
-        case humidity < 0.625  darkcyan
-        else                   darkolivegreen
+let high = elevation   > humidity    and elevation   > temperature in
+let wet  = humidity    > temperature and humidity    > elevation   in
+let hot  = temperature > elevation   and temperature > humidity    in
 
-    case temperature < 0.625
-        case humidity < 0.375  rebeccapurple
-        case humidity < 0.625  dimgrey
-        else                   saddlebrown
+let higher = high and 1.0 + elevation   > ( 2.0 + humidity    + temperature ) * 0.65 in
+let hotter = hot  and 1.0 + temperature > ( 2.0 + elevation   + humidity    ) * 0.65 in
+let wetter = wet  and 1.0 + humidity    > ( 2.0 + temperature + elevation   ) * 0.65 in
 
-    else
-        case humidity < 0.375  darkviolet
-        case humidity < 0.625  purple
-        else                   darkred
-
-case elevation < 0.625
-
-    case temperature < 0.375
-        case humidity < 0.375  deepskyblue
-        case humidity < 0.625  mediumturquoise
-        else                   yellowgreen
-
-    case temperature < 0.625
-        case humidity < 0.375  mediumpurple
-        case humidity < 0.625  darkgrey
-        else                   goldenrod
-
-    else
-        case humidity < 0.375  mediumorchid
-        case humidity < 0.625  palevioletred
-        else                   indianred
-
-else
-
-    case temperature < 0.375
-        case humidity < 0.375  lightcyan
-        case humidity < 0.625  paleturquoise
-        else                   palegreen
-
-    case temperature < 0.625
-        case humidity < 0.375  lavender
-        case humidity < 0.625  gainsboro
-        else                   lemonchiffon
-
-    else
-        case humidity < 0.375  plum
-        case humidity < 0.625  pink
-        else                   navajowhite
+if higher then deepblue  else
+if hotter then deepred   else
+if wetter then deepgreen else
+if high   then blue       else
+if hot    then red        else
+green
