@@ -3,17 +3,24 @@ use noise::MultiFractal;
 use noise::NoiseFn;
 use noise::Seedable;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VarSpec {
+    Elevation,
+    Humidity,
+    Temperature,
+    X,
+    Y,
+    Perlin {
+        octaves: usize,
+        frequency: f32,
+        persistence: f32,
+    },
+}
+
 /// A Cell describes geographic location
-#[derive(Clone, Copy)]
 pub struct Cell {
-    /// Elevation in the range 0.0 - 1.0 inclusive
-    pub elevation: f32,
-
-    /// Humidity in the range 0.0 - 1.0 inclusive
-    pub humidity: f32,
-
-    /// Temperature in the range 0.0 - 1.0 inclusive
-    pub temperature: f32,
+    /// Variables in the range 0.0 - 1.0 inclusive
+    pub vars: Vec<f32>,
 }
 
 pub struct Generator {
@@ -27,7 +34,7 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub fn new() -> Self {
+    pub fn new(_vars: Vec<VarSpec>) -> Self {
         Generator {
             slope: 0.5,
             elevation_octaves: Fbm::DEFAULT_OCTAVE_COUNT,
@@ -106,9 +113,7 @@ impl Generator {
                 let temperature = (0.5 + 0.5 * temperature_noise.get([x, y])) as f32;
 
                 cells.push(Cell {
-                    elevation,
-                    humidity,
-                    temperature,
+                    vars: vec![elevation, humidity, temperature],
                 });
 
                 x += step_x;

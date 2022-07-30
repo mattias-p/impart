@@ -60,6 +60,13 @@ pub enum Op {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Var {
+    Perlin,
+    X,
+    Y,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     Elevation,
     Humidity,
@@ -74,9 +81,7 @@ pub enum Token<'a> {
     Equal,
     ParenLeft,
     ParenRight,
-    Perlin,
-    X,
-    Y,
+    Var(Var),
     BraceLeft,
     Colon,
     Semicolon,
@@ -264,9 +269,9 @@ impl<'a> Iterator for Lexer<'a> {
                     b"else" => Token::Else,
                     b"true" => Token::True,
                     b"false" => Token::False,
-                    b"Perlin" => Token::Perlin,
-                    b"X" => Token::X,
-                    b"Y" => Token::Y,
+                    b"Perlin" => Token::Var(Var::Perlin),
+                    b"X" => Token::Var(Var::X),
+                    b"Y" => Token::Var(Var::Y),
                     b"{" => Token::BraceLeft,
                     b"}" => Token::BraceRight,
                     b":" => Token::Colon,
@@ -358,9 +363,9 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::If));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Perlin));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::X));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Y));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Var(Var::Perlin)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Var(Var::X)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Var(Var::Y)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::BraceLeft));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Colon));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Semicolon));

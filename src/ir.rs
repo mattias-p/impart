@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt;
 
 use palette::rgb::channels::Argb;
@@ -5,14 +6,14 @@ use palette::Srgb;
 
 use crate::ast;
 use crate::generate::Cell;
+use crate::generate::VarSpec;
+use crate::lexer;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Variable {
-    Elevation,
-    Humidity,
-    Temperature,
+pub struct VarId {
+    index: usize,
 }
 
 pub enum Source {
@@ -53,7 +54,7 @@ pub trait Type {
 
 pub trait TypeOp: Clone + fmt::Debug + PartialEq {
     type Repr;
-    fn eval(&self, cell: Cell) -> Self::Repr;
+    fn eval(&self, cell: &Cell) -> Self::Repr;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -73,7 +74,7 @@ pub enum BoolOp {
 }
 impl TypeOp for BoolOp {
     type Repr = bool;
-    fn eval(&self, cell: Cell) -> Self::Repr {
+    fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
             BoolOp::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
@@ -100,7 +101,7 @@ impl Type for Color {
 pub enum ColorOp {}
 impl TypeOp for ColorOp {
     type Repr = Srgb<u8>;
-    fn eval(&self, _cell: Cell) -> Self::Repr {
+    fn eval(&self, _cell: &Cell) -> Self::Repr {
         unreachable!("ColorOp is a never-type");
     }
 }
@@ -113,7 +114,7 @@ impl Type for Float {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum FloatOp {
-    Variable(Variable),
+    Variable(VarId),
     Neg { rhs: Expr<Float> },
     Mul { lhs: Expr<Float>, rhs: Expr<Float> },
     Div { lhs: Expr<Float>, rhs: Expr<Float> },
@@ -122,11 +123,9 @@ pub enum FloatOp {
 }
 impl TypeOp for FloatOp {
     type Repr = f32;
-    fn eval(&self, cell: Cell) -> Self::Repr {
+    fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            FloatOp::Variable(Variable::Elevation) => cell.elevation,
-            FloatOp::Variable(Variable::Humidity) => cell.humidity,
-            FloatOp::Variable(Variable::Temperature) => cell.temperature,
+            FloatOp::Variable(var) => cell.vars[var.index],
             FloatOp::Neg { rhs } => -rhs.eval(cell),
             FloatOp::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
             FloatOp::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
@@ -166,7 +165,7 @@ pub enum Expr<T: Type> {
 }
 
 impl<T: Type> Expr<T> {
-    pub fn eval(&self, cell: Cell) -> T::Repr {
+    pub fn eval(&self, cell: &Cell) -> T::Repr {
         match self {
             Expr::Imm(value) => *value,
             Expr::IfThenElse(if_then_else) => {
@@ -188,47 +187,90 @@ pub struct IfThenElse<T: Type> {
     pub if_false: Expr<T>,
 }
 
+pub fn float_literal(literal: &Loc<ast::Literal>) -> Result<f32, String> {
+    match literal.inner {
+        ast::Literal::Decimal(s) => Ok(s.parse::<f32>().unwrap()),
+        ast::Literal::True => Err(literal.error("expected number got bool")),
+        ast::Literal::False => Err(literal.error("expected number got bool")),
+        ast::Literal::Hexcode(_) => Err(literal.error("expected number got color")),
+    }
+}
+
+const ELEVATION: VarId = VarId { index: 0 };
+const HUMIDITY: VarId = VarId { index: 1 };
+const TEMPERATURE: VarId = VarId { index: 2 };
+
 #[derive(Debug)]
-pub struct SymTable<'a> {
-    next: Option<(&'a str, Loc<AnyExpr>, &'a SymTable<'a>)>,
+pub enum SymTable<'a> {
+    Vars {
+        vars: RefCell<Vec<VarSpec>>,
+    },
+    Sym {
+        sym: &'a str,
+        value: Loc<AnyExpr>,
+        next: &'a SymTable<'a>,
+    },
 }
 
 impl<'a> SymTable<'a> {
     pub fn new() -> Self {
-        SymTable { next: None }
+        SymTable::Vars {
+            vars: RefCell::new(vec![
+                VarSpec::Elevation,
+                VarSpec::Humidity,
+                VarSpec::Temperature,
+            ]),
+        }
     }
 
-    pub fn symbol(&self, sym: &str) -> Option<Loc<AnyExpr>> {
-        match &self.next {
-            Some((s, def, next)) => {
-                if *s == sym {
-                    Some(def.clone())
+    pub fn get_vars(&self) -> Vec<VarSpec> {
+        match self {
+            SymTable::Sym { next, .. } => next.get_vars(),
+            SymTable::Vars { vars } => vars.borrow().clone(),
+        }
+    }
+
+    pub fn symbol(&self, name: &str) -> Option<Loc<AnyExpr>> {
+        match &*self {
+            SymTable::Sym { sym, value, next } => {
+                if *sym == name {
+                    Some(value.clone())
                 } else {
-                    next.symbol(sym)
+                    next.symbol(name)
                 }
             }
-            None => None,
+            SymTable::Vars { .. } => None,
         }
     }
 
-    pub fn with_def(&self, sym: Loc<&'a str>, def: AnyExpr) -> SymTable<'_> {
-        SymTable {
-            next: Some((sym.inner, sym.map(|_| def), self)),
+    pub fn with_def(&'a self, sym: Loc<&'a str>, value: AnyExpr) -> SymTable<'a> {
+        SymTable::Sym {
+            sym: sym.inner,
+            value: sym.map(|_| value),
+            next: self,
         }
     }
 
-    pub fn any_expr(&self, expr: &Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
+    pub fn new_variable(&self, spec: VarSpec) -> VarId {
+        match self {
+            SymTable::Sym { next, .. } => next.new_variable(spec),
+            SymTable::Vars { vars } => {
+                let mut vars = vars.borrow_mut();
+                let index = vars.len();
+                vars.push(spec);
+                VarId { index }
+            }
+        }
+    }
+
+    pub fn any_expr(&self, expr: &'a Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
         match &expr.inner {
-            ast::Expr::Elevation => Ok((
-                FloatOp::Variable(Variable::Elevation).into_anyexpr(),
-                Source::Inline,
-            )),
-            ast::Expr::Humidity => Ok((
-                FloatOp::Variable(Variable::Humidity).into_anyexpr(),
-                Source::Inline,
-            )),
+            ast::Expr::Elevation => {
+                Ok((FloatOp::Variable(ELEVATION).into_anyexpr(), Source::Inline))
+            }
+            ast::Expr::Humidity => Ok((FloatOp::Variable(HUMIDITY).into_anyexpr(), Source::Inline)),
             ast::Expr::Temperature => Ok((
-                FloatOp::Variable(Variable::Temperature).into_anyexpr(),
+                FloatOp::Variable(TEMPERATURE).into_anyexpr(),
                 Source::Inline,
             )),
             ast::Expr::True => Ok((AnyExpr::Bool(Expr::Imm(true)), Source::Inline)),
@@ -247,6 +289,78 @@ impl<'a> SymTable<'a> {
             ast::Expr::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
                 None => Err(expr.error(format!("use of undeclared identifier"))),
+            },
+            ast::Expr::Constructor(inner) => match inner.kind {
+                lexer::Var::Perlin => {
+                    let mut octaves = None;
+                    let mut frequency = None;
+                    let mut persistence = None;
+                    for attr in &inner.attrs {
+                        match attr.name.inner {
+                            "octaves" => {
+                                if octaves.is_some() {
+                                    Err(attr.name.error("octaves already specified"))?;
+                                }
+                                let value = float_literal(&attr.value)?;
+                                if value.fract().abs() > f32::EPSILON {
+                                    Err(attr.value.error("octaves must be an integer"))?;
+                                }
+                                if value.fract() < 1.0 {
+                                    Err(attr.value.error("there must be at least one octave"))?;
+                                }
+                                octaves = Some(value.round());
+                            }
+                            "frequency" => {
+                                if frequency.is_some() {
+                                    Err(attr.name.error("frequency already specified"))?;
+                                }
+                                frequency = Some(float_literal(&attr.value)?);
+                            }
+                            "persistence" => {
+                                if persistence.is_some() {
+                                    Err(attr.name.error("persistence already specified"))?;
+                                }
+                                persistence = Some(float_literal(&attr.value)?);
+                            }
+                            _ => Err(attr.name.error(format!(
+                                "expected 'octaves', 'frequency' or 'persistence' got '{}'",
+                                attr.name.inner
+                            )))?,
+                        }
+                    }
+                    let octaves =
+                        octaves.ok_or_else(|| expr.error("must specify 'octaves'"))? as usize;
+                    let frequency =
+                        frequency.ok_or_else(|| expr.error("must specify 'frequency'"))?;
+                    let persistence =
+                        persistence.ok_or_else(|| expr.error("must specify 'persistence'"))?;
+
+                    let variable = self.new_variable(VarSpec::Perlin {
+                        octaves,
+                        frequency,
+                        persistence,
+                    });
+
+                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                }
+                lexer::Var::X => {
+                    if let Some(attr) = inner.attrs.first() {
+                        Err(attr
+                            .name
+                            .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
+                    }
+                    let variable = self.new_variable(VarSpec::X);
+                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                }
+                lexer::Var::Y => {
+                    if let Some(attr) = inner.attrs.first() {
+                        Err(attr
+                            .name
+                            .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
+                    }
+                    let variable = self.new_variable(VarSpec::Y);
+                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                }
             },
             ast::Expr::LetIn(inner) => {
                 let (def, _) = self.any_expr(&inner.definition)?;
@@ -357,8 +471,9 @@ impl<'a> SymTable<'a> {
     }
 }
 
-pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<Expr<Color>, String> {
-    SymTable::new().color_expr(expr)
+pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
+    let symtable = SymTable::new();
+    Ok((symtable.color_expr(expr)?, symtable.get_vars()))
 }
 
 #[cfg(test)]

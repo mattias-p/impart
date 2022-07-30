@@ -86,11 +86,11 @@ fn main() {
     };
     let mut lexer = Lexer::new(expr);
     let ast = ast::parse(&mut lexer).unwrap();
-    let expr = ir::compile(&ast).unwrap();
+    let (expr, vars) = ir::compile(&ast).unwrap();
 
     let renderer = Renderer::new(expr);
 
-    let generator = Generator::new()
+    let generator = Generator::new(vars)
         .set_slope(cli.slope)
         .set_elevation_octaves(cli.elevation_octaves)
         .set_elevation_frequency(cli.elevation_frequency)

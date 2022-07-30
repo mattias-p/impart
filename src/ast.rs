@@ -2,6 +2,7 @@ use crate::lexer::Lexer;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 use crate::lexer::Token;
+use crate::lexer::Var;
 
 fn expr_bp<'a>(
     lexer: &mut Lexer<'a>,
@@ -24,6 +25,10 @@ fn expr_bp<'a>(
         Token::Let => {
             let body = let_in(lexer)?;
             token.map(|_| Expr::LetIn(Box::new(body)))
+        }
+        Token::Var(kind) => {
+            let body = constructor(kind, lexer)?;
+            token.map(|_| Expr::Constructor(body))
         }
         Token::ParenLeft => {
             let lhs = match expr_bp(lexer, 0)? {
@@ -83,6 +88,84 @@ fn expr_bp<'a>(
     }
 
     Ok(Ok(lhs))
+}
+
+fn ident<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<&'a str>, String> {
+    let token = lexer.next().unwrap()?;
+    match token.inner {
+        Token::Ident(s) => Ok(token.map(|_| s)),
+        inner => Err(token.error(&format!("expected identifier got {inner:?}"))),
+    }
+}
+
+fn colon<'a>(lexer: &mut Lexer<'a>) -> Result<(), String> {
+    let token = lexer.next().unwrap()?;
+    match token.inner {
+        Token::Colon => Ok(()),
+        inner => Err(token.error(&format!("expected ':' got {inner:?}"))),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Literal<'a> {
+    True,
+    False,
+    Decimal(&'a str),
+    Hexcode(&'a str),
+}
+
+fn literal<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Literal<'a>>, String> {
+    let token = lexer.next().unwrap()?;
+    match token.inner {
+        Token::True => Ok(token.map(|_| Literal::True)),
+        Token::False => Ok(token.map(|_| Literal::False)),
+        Token::Hexcode(s) => Ok(token.map(|_| Literal::Hexcode(s))),
+        Token::Decimal(s) => Ok(token.map(|_| Literal::Decimal(s))),
+        inner => Err(token.error(&format!("expected literal got {inner:?}"))),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Attr<'a> {
+    pub name: Loc<&'a str>,
+    pub value: Loc<Literal<'a>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Constructor<'a> {
+    pub kind: Var,
+    pub attrs: Vec<Attr<'a>>,
+}
+
+fn constructor<'a>(kind: Var, lexer: &mut Lexer<'a>) -> Result<Constructor<'a>, String> {
+    let token = lexer.next().unwrap()?;
+    match &token.inner {
+        Token::BraceLeft => {}
+        inner => Err(token.error(&format!("expected '{{' got {inner:?}")))?,
+    };
+
+    let mut attrs = Vec::new();
+
+    loop {
+        if lexer.peek().unwrap()?.inner == Token::BraceRight {
+            break;
+        }
+
+        let name = ident(lexer)?;
+        colon(lexer)?;
+        let value = literal(lexer)?;
+
+        attrs.push(Attr { name, value });
+
+        let token = lexer.next().unwrap()?;
+        match &token.inner {
+            Token::BraceRight => break,
+            Token::Semicolon => {}
+            inner => Err(token.error(&format!("expected ';' or '}}' got {inner:?}")))?,
+        };
+    }
+
+    Ok(Constructor { kind, attrs })
 }
 
 fn let_in<'a>(lexer: &mut Lexer<'a>) -> Result<LetIn<'a>, String> {
@@ -194,6 +277,7 @@ pub enum Expr<'a> {
     Elevation,
     Humidity,
     Temperature,
+    Constructor(Constructor<'a>),
     True,
     False,
     Float(&'a str),
