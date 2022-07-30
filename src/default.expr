@@ -1,18 +1,17 @@
 let slope = 0.5 in
 
 let red       = #ff8888 in
-let deepred   = #ff0000 in
 let green     = #88ff88 in
-let deepgreen = #00ff00 in
 let blue      = #8888ff in
+let deepred   = #ff0000 in
+let deepgreen = #00ff00 in
 let deepblue  = #0000ff in
 
-let raw-elevation = Perlin { octaves : 6.0 ; frequency : 1.0  ; persistence : 0.5 } in
-let humidity      = Perlin { octaves : 4.0 ; frequency : 0.5 ; persistence : 0.5 } in
-let temperature   = Perlin { octaves : 4.0 ; frequency : 0.5 ; persistence : 0.5 } in
 let y             = Y { } in
-
-let elevation = ( 1.0 - slope ) * raw-elevation + slope * y in
+let raw_elevation = Perlin { octaves : 6.0 ; frequency : 1.0 ; persistence : 0.5 } in
+let humidity      = Perlin { octaves : 3.0 ; frequency : 0.5 ; persistence : 0.5 } in
+let temperature   = Perlin { octaves : 3.0 ; frequency : 0.5 ; persistence : 0.5 } in
+let elevation     = ( 1.0 - slope ) * raw_elevation + slope * y in
 
 let high = elevation   > humidity    and elevation   > temperature in
 let wet  = humidity    > temperature and humidity    > elevation   in

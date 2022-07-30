@@ -148,12 +148,12 @@ impl<'a> Iterator for Lexer<'a> {
         }
 
         #[derive(PartialEq)]
-        enum State {
+        enum State<'a> {
             Start,
             StartCR,
-            Solidus,
             Comment,
             Bareword(usize),
+            Special(Token<'a>),
             Decimal0,
             Decimal1,
             Decimal(usize),
@@ -187,13 +187,25 @@ impl<'a> Iterator for Lexer<'a> {
                     self.pos += 1;
                     State::Start
                 }
-                (State::Start | State::StartCR, b'/') => State::Solidus,
-                (State::Start | State::StartCR, b'#') => State::Hexcode0(0),
                 (State::Start | State::StartCR | State::Decimal0, b'0'..=b'9') => State::Decimal0,
-                (State::Start | State::StartCR, _) => State::Bareword(pos),
+                (State::Start | State::StartCR, b'a'..=b'z' | b'A'..=b'Z') => State::Bareword(pos),
+                (State::Start | State::StartCR, b'#') => State::Hexcode0(0),
+                (State::Start | State::StartCR, b'(') => State::Special(Token::ParenLeft),
+                (State::Start | State::StartCR, b')') => State::Special(Token::ParenRight),
+                (State::Start | State::StartCR, b'{') => State::Special(Token::BraceLeft),
+                (State::Start | State::StartCR, b'}') => State::Special(Token::BraceRight),
+                (State::Start | State::StartCR, b':') => State::Special(Token::Colon),
+                (State::Start | State::StartCR, b';') => State::Special(Token::Semicolon),
+                (State::Start | State::StartCR, b'=') => State::Special(Token::Equal),
+                (State::Start | State::StartCR, b'-') => State::Special(Token::Op(Op::Minus)),
+                (State::Start | State::StartCR, b'+') => State::Special(Token::Op(Op::Plus)),
+                (State::Start | State::StartCR, b'*') => State::Special(Token::Op(Op::Asterisk)),
+                (State::Start | State::StartCR, b'/') => State::Special(Token::Op(Op::Solidus)),
+                (State::Start | State::StartCR, b'>') => State::Special(Token::Op(Op::Greater)),
+                (State::Start | State::StartCR, b'<') => State::Special(Token::Op(Op::Less)),
 
                 // Comments
-                (State::Solidus, b'/') => {
+                (State::Special(Token::Op(Op::Solidus)), b'/') => {
                     self.pos += 2;
                     State::Comment
                 }
@@ -202,16 +214,21 @@ impl<'a> Iterator for Lexer<'a> {
                     State::Comment
                 }
 
+                // Special characters
+                (State::Special(_), _) => break,
+
                 // Whitespace
                 (
-                    State::Bareword(_) | State::Decimal(_) | State::Hexcode(_) | State::Solidus,
+                    State::Bareword(_) | State::Decimal(_) | State::Hexcode(_),
                     b' ' | b'\n' | b'\r',
                 ) => {
                     break;
                 }
 
                 // Barewords
-                (State::Bareword(_) | State::Solidus, _) => State::Bareword(pos),
+                (State::Bareword(_), b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_') => {
+                    State::Bareword(pos)
+                }
 
                 // Hexcodes
                 (State::Hexcode0(count), b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') => {
@@ -225,13 +242,18 @@ impl<'a> Iterator for Lexer<'a> {
                 // Decimal numbers
                 (State::Decimal0, b'.') => State::Decimal1,
                 (State::Decimal1 | State::Decimal(_), b'0'..=b'9') => State::Decimal(pos),
+
+                // Bad characters
                 (
-                    State::Decimal0
+                    State::Start
+                    | State::StartCR
+                    | State::Decimal0
                     | State::Decimal1
                     | State::Decimal(_)
                     | State::Hexcode0(_)
-                    | State::Hexcode(_),
-                    ch,
+                    | State::Hexcode(_)
+                    | State::Bareword(_),
+                    _,
                 ) => return Some(Err(self.error(format!("unexpected character '{ch}'")))),
             };
             pos += 1;
@@ -241,21 +263,14 @@ impl<'a> Iterator for Lexer<'a> {
             State::Start | State::StartCR | State::Comment => {
                 return Some(Ok(self.produce(Token::Eof, self.pos)));
             }
+            State::Special(token) => self.produce(token, self.pos + 1),
             State::Bareword(end) => {
                 let s = &self.corpus[self.pos..=end];
                 let token = match s {
-                    b"(" => Token::ParenLeft,
-                    b")" => Token::ParenRight,
-                    b"-" => Token::Op(Op::Minus),
-                    b"+" => Token::Op(Op::Plus),
-                    b"*" => Token::Op(Op::Asterisk),
-                    b">" => Token::Op(Op::Greater),
-                    b"<" => Token::Op(Op::Less),
                     b"not" => Token::Op(Op::Not),
                     b"and" => Token::Op(Op::And),
                     b"xor" => Token::Op(Op::Xor),
                     b"or" => Token::Op(Op::Or),
-                    b"=" => Token::Equal,
                     b"let" => Token::Let,
                     b"in" => Token::In,
                     b"if" => Token::If,
@@ -266,10 +281,6 @@ impl<'a> Iterator for Lexer<'a> {
                     b"Perlin" => Token::Var(Var::Perlin),
                     b"X" => Token::Var(Var::X),
                     b"Y" => Token::Var(Var::Y),
-                    b"{" => Token::BraceLeft,
-                    b"}" => Token::BraceRight,
-                    b":" => Token::Colon,
-                    b";" => Token::Semicolon,
                     ident => match std::str::from_utf8(ident) {
                         Ok(ident) => Token::Ident(ident),
                         Err(err) => return Some(Err(self.error(err.to_string()))),
@@ -277,7 +288,6 @@ impl<'a> Iterator for Lexer<'a> {
                 };
                 self.produce(token, end + 1)
             }
-            State::Solidus => self.produce(Token::Op(Op::Solidus), self.pos + 1),
             State::Decimal(end) => {
                 let s = self.get_str(self.pos, end).unwrap();
                 self.produce(Token::Decimal(s), end + 1)
