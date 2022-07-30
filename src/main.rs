@@ -4,6 +4,7 @@ mod ir;
 mod lexer;
 mod render;
 
+use std::io::Write;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Read;
@@ -24,9 +25,9 @@ struct Cli {
     #[clap(short, long, default_value = "out.png")]
     outfile: PathBuf,
 
-    /// Expression file
-    #[clap(short, long)]
-    exprfile: Option<PathBuf>,
+    /// Source file
+    #[clap(short = 'c', long)]
+    sourcefile: Option<PathBuf>,
 
     /// Width in modules (x-coordinates)
     #[clap(short, long, default_value_t = 256)]
@@ -39,27 +40,31 @@ struct Cli {
     /// Random seed (0 means pseudo-random)
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
+
+    /// Dump the source
+    #[clap(long, action)]
+    dump_source: bool,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let file = File::create(cli.outfile).unwrap();
-    let ref mut w = BufWriter::new(file);
-
     let mut buffer = Vec::new();
-    let expr = if let Some(exprfile) = cli.exprfile {
-        let mut f = File::open(exprfile).unwrap();
+    let source = if let Some(sourcefile) = cli.sourcefile {
+        let mut f = File::open(sourcefile).unwrap();
         f.read_to_end(&mut buffer).unwrap();
         buffer.as_slice()
     } else {
-        include_bytes!("default.expr")
+        include_bytes!("default.sbf")
     };
-    let mut lexer = Lexer::new(expr);
-    let ast = ast::parse(&mut lexer).unwrap();
-    let (expr, vars) = ir::compile(&ast).unwrap();
 
-    let renderer = Renderer::new(expr);
+    let file = File::create(cli.outfile).unwrap();
+    let ref mut w = BufWriter::new(file);
+
+    let mut lexer = Lexer::new(source);
+    let ast = ast::parse(&mut lexer).unwrap();
+    let (prog, vars) = ir::compile(&ast).unwrap();
+    let renderer = Renderer::new(prog);
     let generator = Generator::new(vars);
 
     let seed = if cli.seed == 0 {
@@ -70,7 +75,11 @@ fn main() {
     } else {
         cli.seed
     };
-    println!("seed: {seed}");
+
+    println!("// seed: {seed}");
+    if cli.dump_source {
+        std::io::stdout().write(&source).unwrap();
+    }
 
     let cells = generator.generate(cli.width, cli.height, seed);
     let image = renderer.render(&cells);
