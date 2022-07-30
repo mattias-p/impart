@@ -24,6 +24,7 @@ pub struct Cell {
 }
 
 pub struct Generator {
+    vars: Vec<VarSpec>,
     slope: f64,
     elevation_octaves: usize,
     elevation_frequency: f64,
@@ -34,8 +35,9 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub fn new(_vars: Vec<VarSpec>) -> Self {
+    pub fn new(vars: Vec<VarSpec>) -> Self {
         Generator {
+            vars,
             slope: 0.5,
             elevation_octaves: Fbm::DEFAULT_OCTAVE_COUNT,
             elevation_frequency: Fbm::DEFAULT_FREQUENCY,
@@ -106,14 +108,22 @@ impl Generator {
         for _ in 0..height {
             let mut x = -1.0;
             for _ in 0..width {
-                let elevation =
-                    ((1.0 - self.slope) * elevation_noise.get([x, y]) + self.slope * y) as f32;
-                let humidity = humidity_noise.get([x, y]) as f32;
-                let temperature = temperature_noise.get([x, y]) as f32;
-
-                cells.push(Cell {
-                    vars: vec![elevation, humidity, temperature],
-                });
+                let vars = self
+                    .vars
+                    .iter()
+                    .map(|spec| match spec {
+                        VarSpec::Elevation => {
+                            ((1.0 - self.slope) * elevation_noise.get([x, y]) + self.slope * y)
+                                as f32
+                        }
+                        VarSpec::Humidity => humidity_noise.get([x, y]) as f32,
+                        VarSpec::Temperature => temperature_noise.get([x, y]) as f32,
+                        VarSpec::X => x as f32,
+                        VarSpec::Y => y as f32,
+                        VarSpec::Perlin { .. } => unimplemented!(),
+                    })
+                    .collect();
+                cells.push(Cell { vars });
 
                 x += step_x;
             }

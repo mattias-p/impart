@@ -41,10 +41,6 @@ struct Cli {
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
 
-    /// Fraction of elevation taken from y-coordinate
-    #[clap(long, default_value_t = 0.475)]
-    slope: f64,
-
     /// Elevation noise octave count
     #[clap(long, default_value_t = Fbm::DEFAULT_OCTAVE_COUNT)]
     elevation_octaves: usize,
@@ -91,7 +87,6 @@ fn main() {
     let renderer = Renderer::new(expr);
 
     let generator = Generator::new(vars)
-        .set_slope(cli.slope)
         .set_elevation_octaves(cli.elevation_octaves)
         .set_elevation_frequency(cli.elevation_frequency)
         .set_elevation_persistence(cli.elevation_persistence)

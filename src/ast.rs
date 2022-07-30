@@ -148,6 +148,7 @@ fn constructor<'a>(kind: Var, lexer: &mut Lexer<'a>) -> Result<Constructor<'a>, 
 
     loop {
         if lexer.peek().unwrap()?.inner == Token::BraceRight {
+            lexer.next();
             break;
         }
 
