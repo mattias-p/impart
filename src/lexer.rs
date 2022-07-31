@@ -154,7 +154,7 @@ impl<'a> Iterator for Lexer<'a> {
             Comment,
             Bareword(usize),
             Special(Token<'a>),
-            Decimal0,
+            Decimal0(usize),
             Decimal1,
             Decimal(usize),
             Hexcode0(u8),
@@ -187,7 +187,9 @@ impl<'a> Iterator for Lexer<'a> {
                     self.pos += 1;
                     State::Start
                 }
-                (State::Start | State::StartCR | State::Decimal0, b'0'..=b'9') => State::Decimal0,
+                (State::Start | State::StartCR | State::Decimal0(_), b'0'..=b'9') => {
+                    State::Decimal0(pos)
+                }
                 (State::Start | State::StartCR, b'a'..=b'z' | b'A'..=b'Z') => State::Bareword(pos),
                 (State::Start | State::StartCR, b'#') => State::Hexcode0(0),
                 (State::Start | State::StartCR, b'(') => State::Special(Token::ParenLeft),
@@ -219,7 +221,7 @@ impl<'a> Iterator for Lexer<'a> {
 
                 // Whitespace
                 (
-                    State::Bareword(_) | State::Decimal(_) | State::Hexcode(_),
+                    State::Bareword(_) | State::Decimal0(_) | State::Decimal(_) | State::Hexcode(_),
                     b' ' | b'\n' | b'\r',
                 ) => {
                     break;
@@ -240,7 +242,7 @@ impl<'a> Iterator for Lexer<'a> {
                 }
 
                 // Decimal numbers
-                (State::Decimal0, b'.') => State::Decimal1,
+                (State::Decimal0(_), b'.') => State::Decimal1,
                 (State::Decimal1 | State::Decimal(_), b'0'..=b'9') => State::Decimal(pos),
 
                 // Unexpected characters
@@ -248,11 +250,19 @@ impl<'a> Iterator for Lexer<'a> {
                 (
                     State::Start
                     | State::StartCR
-                    | State::Decimal0
+                    | State::Decimal0(_)
                     | State::Decimal1
                     | State::Hexcode0(_),
                     _,
-                ) => return Some(Err(self.error(format!("unexpected character '{ch}'")))),
+                ) => {
+                    if *ch <= 127 {
+                        return Some(Err(
+                            self.error(format!("unexpected character '{}'", char::from(*ch)))
+                        ));
+                    } else {
+                        return Some(Err(self.error(format!("unexpected character 0x{ch:x}"))));
+                    }
+                }
             };
             pos += 1;
         }
@@ -286,7 +296,7 @@ impl<'a> Iterator for Lexer<'a> {
                 };
                 self.produce(token, end + 1)
             }
-            State::Decimal(end) => {
+            State::Decimal0(end) | State::Decimal(end) => {
                 let s = self.get_str(self.pos, end).unwrap();
                 self.produce(Token::Decimal(s), end + 1)
             }
@@ -294,7 +304,7 @@ impl<'a> Iterator for Lexer<'a> {
                 let s = self.get_str(self.pos + 1, end).unwrap();
                 self.produce(Token::Hexcode(s), end + 1)
             }
-            State::Decimal0 | State::Decimal1 | State::Hexcode0(_) => {
+            State::Decimal1 | State::Hexcode0(_) => {
                 return Some(Err(self.error("unexpected EOL")));
             }
         };
@@ -314,7 +324,7 @@ mod tests {
     #[test]
     fn tokens() {
         let mut lexer = Lexer::new(
-            b"true=false#fc9630let(3.14foobar{in)if}then:else;Perlin*X/Y+not-and<xor>or",
+            b"true=false#fc9630let(3.14foobar{in<if)then}else:;Perlin*X/Y+not-and>xor or",
         );
 
         assert_eq!(next_inner(&mut lexer), Ok(Token::True));
@@ -327,12 +337,14 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Ident("foobar")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::BraceLeft));
         assert_eq!(next_inner(&mut lexer), Ok(Token::In));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::ParenRight));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Less)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::If));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::BraceRight));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::ParenRight));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Colon));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::BraceRight));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("0")));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Colon));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Semicolon));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Var(Var::Perlin)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Asterisk)));
@@ -343,7 +355,6 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Not)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Minus)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::And)));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Less)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Xor)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Greater)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Or)));

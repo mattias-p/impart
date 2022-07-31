@@ -4,10 +4,10 @@ mod ir;
 mod lexer;
 mod render;
 
-use std::io::Write;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
