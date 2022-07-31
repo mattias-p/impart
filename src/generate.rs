@@ -34,6 +34,9 @@ impl Cell {
     pub fn get(&self, id: VarId) -> f32 {
         self.vars[id.index]
     }
+    pub fn into_vec(self) -> Vec<f32> {
+        self.vars
+    }
 }
 
 pub struct Generator {
