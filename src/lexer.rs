@@ -246,14 +246,11 @@ impl<'a> Iterator for Lexer<'a> {
                 (State::Decimal1 | State::Decimal(_), b'0'..=b'9') => State::Decimal(pos),
 
                 // Unexpected characters
-                (State::Decimal0(_) | State::Decimal(_) | State::Hexcode(_) | State::Bareword(_), _) => break,
                 (
-                    State::Start
-                    | State::StartCR
-                    | State::Decimal1
-                    | State::Hexcode0(_),
+                    State::Decimal0(_) | State::Decimal(_) | State::Hexcode(_) | State::Bareword(_),
                     _,
-                ) => {
+                ) => break,
+                (State::Start | State::StartCR | State::Decimal1 | State::Hexcode0(_), _) => {
                     if *ch <= 127 {
                         return Some(Err(
                             self.error(format!("unexpected character '{}'", char::from(*ch)))
