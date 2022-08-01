@@ -27,15 +27,15 @@ pub enum VarSpec {
 /// A Cell describes geographic location
 pub struct Cell {
     /// Variables in the range 0.0 - 1.0 inclusive
-    vars: Vec<f32>,
+    pub vars: Vec<f32>,
 }
 
 impl Cell {
     pub fn get(&self, id: VarId) -> f32 {
         self.vars[id.index]
     }
-    pub fn into_vec(self) -> Vec<f32> {
-        self.vars
+    pub fn as_slice(&self) -> &[f32] {
+        &self.vars
     }
 }
 

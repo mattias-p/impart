@@ -3,6 +3,7 @@ mod generate;
 mod ir;
 mod lexer;
 mod render;
+mod stats;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -15,9 +16,9 @@ use std::time::UNIX_EPOCH;
 use clap::Parser;
 
 use crate::generate::Generator;
-use crate::generate::VarSpec;
 use crate::lexer::Lexer;
 use crate::render::Renderer;
+use crate::stats::Stats;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -68,18 +69,12 @@ fn main() {
 
     let mut lexer = Lexer::new(source);
     let ast = ast::parse(&mut lexer).unwrap();
-    let (prog, vars) = ir::compile(&ast).unwrap();
+    let (prog, var_specs) = ir::compile(&ast).unwrap();
 
-    let ranges: Vec<_> = vars
-        .iter()
-        .map(|spec| match spec {
-            VarSpec::Perlin { .. } => Some(((0.0f32), (0.0f32))),
-            _ => None,
-        })
-        .collect();
+    let stats = Stats::new(var_specs.clone());
 
     let renderer = Renderer::new(prog);
-    let generator = Generator::new(vars);
+    let generator = Generator::new(var_specs);
 
     let seed = if cli.seed == 0 {
         SystemTime::now()
@@ -97,31 +92,13 @@ fn main() {
 
     let cells = generator.generate(cli.width, cli.height, seed);
     let image = renderer.render(&cells);
+    if cli.dump_stats {
+        let report = stats.report(&cells);
+        print!("{}", report);
+    }
 
     let mut encoder = png::Encoder::new(w, cli.width as u32, cli.height as u32);
     encoder.set_color(png::ColorType::Rgb);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&image).unwrap();
-
-    if cli.dump_stats {
-        let ranges: Vec<Option<(f32, f32)>> = cells.into_iter().fold(ranges, |ranges, cell| {
-            ranges
-                .into_iter()
-                .zip(cell.into_vec().into_iter())
-                .map(|(range, value)| range.map(|(min, max)| (min.min(value), max.max(value))))
-                .collect()
-        });
-        let (min_tot, max_tot) =
-            ranges
-                .iter()
-                .fold((-1.0f32, 1.0f32), |(min_acc, max_acc), range| match range {
-                    Some((min_val, max_val)) => (min_acc.max(*min_val), max_acc.min(*max_val)),
-                    None => (min_acc, max_acc),
-                });
-
-        for (min, max) in ranges.into_iter().flatten() {
-            println!("// var range: {:.6}..={:.6}", min, max);
-        }
-        println!("// min range: {:.6}..={:.6}", min_tot, max_tot);
-    }
 }
