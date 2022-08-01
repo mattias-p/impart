@@ -451,21 +451,22 @@ impl<'a> SymTable<'a> {
     }
 }
 
-pub fn compile<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
+pub fn parse<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
     let symtable = SymTable::new();
     Ok((symtable.color_expr(expr)?, symtable.get_vars()))
+}
+
+pub fn parse_source(source: &[u8]) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
+    let tree = ast::parse_source(source)?;
+    parse(&tree)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::lexer::Lexer;
-
     fn check(corpus: &[u8]) -> Result<Expr<Color>, String> {
-        let mut lexer = Lexer::new(corpus);
-        let ast = ast::parse(&mut lexer)?;
-        Ok(compile(&ast)?.0)
+        Ok(parse_source(corpus)?.0)
     }
 
     fn color(hexcode: &str) -> Srgb<u8> {

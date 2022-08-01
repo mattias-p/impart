@@ -309,6 +309,11 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
     }
 }
 
+pub fn parse_source<'a>(source: &'a [u8]) -> Result<Loc<Expr<'a>>, String> {
+    let mut lexer = Lexer::new(source);
+    parse(&mut lexer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,7 +17,6 @@ use anyhow::Context;
 use clap::Parser;
 
 use crate::generate::Generator;
-use crate::lexer::Lexer;
 use crate::render::Renderer;
 use crate::stats::Stats;
 
@@ -69,13 +68,9 @@ fn main() -> anyhow::Result<()> {
     let file = File::create(&cli.outfile).context("Failed to open out file")?;
     let ref mut w = BufWriter::new(file);
 
-    let mut lexer = Lexer::new(source);
-    let ast = ast::parse(&mut lexer)
+    let (prog, var_specs) = ir::parse_source(&source)
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
-    let (prog, var_specs) = ir::compile(&ast)
-        .map_err(anyhow::Error::msg)
-        .context("Failed to compile source")?;
 
     let generator = Generator::new(var_specs.clone());
     let stats = Stats::new(var_specs);
