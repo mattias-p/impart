@@ -64,6 +64,12 @@ fn main() -> anyhow::Result<()> {
     } else {
         include_bytes!("default.sbf")
     };
+    if cli.dump_source {
+        std::io::stdout()
+            .write(&source)
+            .context("Failed to write to stdout")?;
+        return Ok(());
+    }
 
     let file = File::create(&cli.outfile).context("Failed to open out file")?;
     let ref mut w = BufWriter::new(file);
@@ -85,20 +91,14 @@ fn main() -> anyhow::Result<()> {
         cli.seed
     };
 
-    println!("// seed: {seed}");
-    if cli.dump_source {
-        std::io::stdout()
-            .write(&source)
-            .context("Failed to write to stdout")?;
-    }
-
+    println!("seed: {seed}");
     let cells = generator.generate(cli.width, cli.height, seed);
-    let image = renderer.render(&cells);
     if cli.dump_stats {
         let report = stats.report(&cells);
         print!("{}", report);
     }
 
+    let image = renderer.render(&cells);
     let mut encoder = png::Encoder::new(w, cli.width as u32, cli.height as u32);
     encoder.set_color(png::ColorType::Rgb);
     let mut writer = encoder
