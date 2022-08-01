@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use anyhow::Context;
 use clap::Parser;
 
 use crate::generate::Generator;
@@ -52,34 +53,38 @@ struct Cli {
     dump_stats: bool,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let mut buffer = Vec::new();
-    let source = if let Some(sourcefile) = cli.sourcefile {
-        let mut f = File::open(sourcefile).unwrap();
-        f.read_to_end(&mut buffer).unwrap();
+    let source = if let Some(ref sourcefile) = cli.sourcefile {
+        let mut f = File::open(sourcefile).context("Failed to open source file")?;
+        f.read_to_end(&mut buffer)
+            .context("Failed to read source file")?;
         buffer.as_slice()
     } else {
         include_bytes!("default.sbf")
     };
 
-    let file = File::create(cli.outfile).unwrap();
+    let file = File::create(&cli.outfile).context("Failed to open out file")?;
     let ref mut w = BufWriter::new(file);
 
     let mut lexer = Lexer::new(source);
-    let ast = ast::parse(&mut lexer).unwrap();
-    let (prog, var_specs) = ir::compile(&ast).unwrap();
+    let ast = ast::parse(&mut lexer)
+        .map_err(anyhow::Error::msg)
+        .context("Failed to parse source")?;
+    let (prog, var_specs) = ir::compile(&ast)
+        .map_err(anyhow::Error::msg)
+        .context("Failed to compile source")?;
 
-    let stats = Stats::new(var_specs.clone());
-
+    let generator = Generator::new(var_specs.clone());
+    let stats = Stats::new(var_specs);
     let renderer = Renderer::new(prog);
-    let generator = Generator::new(var_specs);
 
     let seed = if cli.seed == 0 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .context("Failed to calculate Unix time")?
             .as_nanos() as u32
     } else {
         cli.seed
@@ -87,7 +92,9 @@ fn main() {
 
     println!("// seed: {seed}");
     if cli.dump_source {
-        std::io::stdout().write(&source).unwrap();
+        std::io::stdout()
+            .write(&source)
+            .context("Failed to write to stdout")?;
     }
 
     let cells = generator.generate(cli.width, cli.height, seed);
@@ -99,6 +106,12 @@ fn main() {
 
     let mut encoder = png::Encoder::new(w, cli.width as u32, cli.height as u32);
     encoder.set_color(png::ColorType::Rgb);
-    let mut writer = encoder.write_header().unwrap();
-    writer.write_image_data(&image).unwrap();
+    let mut writer = encoder
+        .write_header()
+        .context("Failed to write out file header")?;
+    writer
+        .write_image_data(&image)
+        .context("Failed to write out file contents")?;
+
+    Ok(())
 }
