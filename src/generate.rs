@@ -55,7 +55,7 @@ impl Variable {
             Variable::Perlin(fbm) => {
                 let value = fbm.get([x, y]);
                 value.abs().sqrt().copysign(value) as f32
-            },
+            }
             Variable::X => x as f32,
             Variable::Y => y as f32,
         }

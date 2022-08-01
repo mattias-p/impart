@@ -63,7 +63,19 @@ impl fmt::Display for Report {
             writeln!(f, "var range: [{:.6}; {:.6}] ({:.6})", min, max, max - min)?;
         }
         writeln!(f, "")?;
-        writeln!(f, "min range: [{:.6}; {:.6}] ({:.6})", self.min.0, self.min.1, self.min.1 - self.min.0)?;
-        writeln!(f, "max range: [{:.6}; {:.6}] ({:.6})", self.max.0, self.max.1, self.max.1 - self.max.0)
+        writeln!(
+            f,
+            "min range: [{:.6}; {:.6}] ({:.6})",
+            self.min.0,
+            self.min.1,
+            self.min.1 - self.min.0
+        )?;
+        writeln!(
+            f,
+            "max range: [{:.6}; {:.6}] ({:.6})",
+            self.max.0,
+            self.max.1,
+            self.max.1 - self.max.0
+        )
     }
 }
