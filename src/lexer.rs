@@ -246,11 +246,10 @@ impl<'a> Iterator for Lexer<'a> {
                 (State::Decimal1 | State::Decimal(_), b'0'..=b'9') => State::Decimal(pos),
 
                 // Unexpected characters
-                (State::Decimal(_) | State::Hexcode(_) | State::Bareword(_), _) => break,
+                (State::Decimal0(_) | State::Decimal(_) | State::Hexcode(_) | State::Bareword(_), _) => break,
                 (
                     State::Start
                     | State::StartCR
-                    | State::Decimal0(_)
                     | State::Decimal1
                     | State::Hexcode0(_),
                     _,
@@ -324,7 +323,9 @@ mod tests {
     #[test]
     fn tokens() {
         let mut lexer = Lexer::new(
-            b"true=false#fc9630let(3.14foobar{in<if)then}else:;Perlin*X/Y+not-and>xor or",
+            //         1         2         3         4         5         6         7
+            //123456789012345678901234567890123456789012345678901234567890123456789012345
+            b"true=false#fc9630let(3.14foobar{in<if)then}else:0;Perlin*X/Y+not-and>xor or",
         );
 
         assert_eq!(next_inner(&mut lexer), Ok(Token::True));
@@ -343,8 +344,8 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Then));
         assert_eq!(next_inner(&mut lexer), Ok(Token::BraceRight));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Else));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("0")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Colon));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Decimal("0")));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Semicolon));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Var(Var::Perlin)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Asterisk)));
@@ -355,8 +356,8 @@ mod tests {
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Not)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Minus)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::And)));
-        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Xor)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Greater)));
+        assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Xor)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Op(Op::Or)));
         assert_eq!(next_inner(&mut lexer), Ok(Token::Eof));
     }
