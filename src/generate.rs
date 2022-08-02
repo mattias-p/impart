@@ -94,9 +94,11 @@ impl Generator {
         for _ in 0..height {
             let mut x = -1.0;
             for _ in 0..width {
-                let values = vars.iter().map(|var| var.eval(x, y)).collect();
+                let mut values = Vec::with_capacity(self.var_specs.len());
+                for var in &vars {
+                    values.push(var.eval(x, y));
+                }
                 cells.push(Cell { values });
-
                 x += step_x;
             }
             y -= step_y;
