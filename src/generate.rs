@@ -125,15 +125,12 @@ impl Generator {
             .collect();
 
         let num_cells = width as usize * height as usize;
-        let mut axes: Vec<_> = self
-            .var_specs
-            .iter()
-            .map(|_| Vec::with_capacity(num_cells))
-            .collect();
+        let mut axes = Vec::with_capacity(self.var_specs.len());
 
         let step_x = 2.0 / (width - 1) as f64;
         let step_y = 2.0 / (height - 1) as f64;
-        for (axis, var) in axes.iter_mut().zip(vars.iter()) {
+        for var in &vars {
+            let mut axis = Vec::with_capacity(num_cells);
             let mut y = 1.0;
             for _ in 0..height {
                 let mut x = -1.0;
@@ -143,6 +140,7 @@ impl Generator {
                 }
                 y -= step_y;
             }
+            axes.push(axis);
         }
 
         Field { axes }
