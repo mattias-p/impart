@@ -1,6 +1,6 @@
 use palette::Pixel;
 
-use crate::generate::Cell;
+use crate::generate::Field;
 use crate::ir;
 
 pub struct Renderer {
@@ -12,11 +12,11 @@ impl Renderer {
         Renderer { expr }
     }
 
-    pub fn render(&self, cells: &[Cell]) -> Vec<u8> {
-        let mut image: Vec<u8> = Vec::with_capacity(cells.len() * 3);
+    pub fn render(&self, field: &Field) -> Vec<u8> {
+        let mut image: Vec<u8> = Vec::with_capacity(field.size() * 3);
 
-        for cell in cells {
-            let color = self.expr.eval(cell);
+        for cell in field.cells() {
+            let color = self.expr.eval(&cell);
             image.extend(color.into_raw::<[u8; 3]>().into_iter());
         }
 

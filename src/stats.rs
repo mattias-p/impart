@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::generate::Cell;
+use crate::generate::Field;
 use crate::generate::VarSpec;
 
 pub struct Stats {
@@ -11,7 +11,7 @@ impl Stats {
     pub fn new(var_specs: Vec<VarSpec>) -> Self {
         Stats { var_specs }
     }
-    pub fn report(&self, cells: &[Cell]) -> Report {
+    pub fn report(&self, field: &Field) -> Report {
         let init: Vec<_> = self
             .var_specs
             .iter()
@@ -20,7 +20,7 @@ impl Stats {
                 _ => None,
             })
             .collect();
-        let ranges: Vec<Option<(f32, f32)>> = cells.into_iter().fold(init, |ranges, cell| {
+        let ranges: Vec<Option<(f32, f32)>> = field.cells().fold(init, |ranges, cell| {
             ranges
                 .into_iter()
                 .zip(cell.as_slice().iter())

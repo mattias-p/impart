@@ -69,6 +69,9 @@ impl Field {
             index: 0,
         }
     }
+    pub fn size(&self) -> usize {
+        self.axes[0].len()
+    }
 }
 
 pub struct Cells<'a> {
@@ -99,7 +102,7 @@ impl Generator {
         Generator { var_specs }
     }
 
-    pub fn generate(&self, width: u16, height: u16, seed: u32) -> Vec<Cell> {
+    pub fn generate(&self, width: u16, height: u16, seed: u32) -> Field {
         let vars: Vec<_> = self
             .var_specs
             .iter()
@@ -142,13 +145,6 @@ impl Generator {
             y -= step_y;
         }
 
-        let field = Field { axes };
-
-        let mut cells = Vec::with_capacity(num_cells);
-        for cell in field.cells() {
-            cells.push(cell);
-        }
-
-        cells
+        Field { axes }
     }
 }
