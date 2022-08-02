@@ -24,25 +24,6 @@ pub enum VarSpec {
     },
 }
 
-/// A Cell describes geographic location
-pub struct Cell {
-    /// Variables in the range 0.0 - 1.0 inclusive
-    pub values: Vec<f32>,
-}
-
-impl Cell {
-    pub fn get(&self, id: VarId) -> f32 {
-        self.values[id.index]
-    }
-    pub fn as_slice(&self) -> &[f32] {
-        &self.values
-    }
-}
-
-pub struct Generator {
-    var_specs: Vec<VarSpec>,
-}
-
 pub enum Variable {
     Perlin(Fbm),
     X,
@@ -60,6 +41,25 @@ impl Variable {
             Variable::Y => y as f32,
         }
     }
+}
+
+/// A Cell describes geographic location
+pub struct Cell {
+    /// Variables in the range 0.0 - 1.0 inclusive
+    pub values: Vec<f32>,
+}
+
+impl Cell {
+    pub fn get(&self, id: VarId) -> f32 {
+        self.values[id.index]
+    }
+    pub fn as_slice(&self) -> &[f32] {
+        &self.values
+    }
+}
+
+pub struct Generator {
+    var_specs: Vec<VarSpec>,
 }
 
 impl Generator {
