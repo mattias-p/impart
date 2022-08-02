@@ -58,6 +58,38 @@ impl Cell {
     }
 }
 
+pub struct Field {
+    axes: Vec<Vec<f32>>,
+}
+
+impl Field {
+    pub fn cells(&self) -> Cells {
+        Cells {
+            axes: &self.axes,
+            index: 0,
+        }
+    }
+}
+
+pub struct Cells<'a> {
+    axes: &'a [Vec<f32>],
+    index: usize,
+}
+
+impl<'a> Iterator for Cells<'a> {
+    type Item = Cell;
+    fn next(&mut self) -> Option<Cell> {
+        if self.index < self.axes[0].len() {
+            let values = self.axes.iter().map(|axis| axis[self.index]).collect();
+            let cell = Cell { values };
+            self.index += 1;
+            Some(cell)
+        } else {
+            None
+        }
+    }
+}
+
 pub struct Generator {
     var_specs: Vec<VarSpec>,
 }
@@ -110,13 +142,11 @@ impl Generator {
             y -= step_y;
         }
 
+        let field = Field { axes };
+
         let mut cells = Vec::with_capacity(num_cells);
-        for i in 0..num_cells {
-            let mut values = Vec::with_capacity(self.var_specs.len());
-            for axis in &axes {
-                values.push(axis[i]);
-            }
-            cells.push(Cell { values });
+        for cell in field.cells() {
+            cells.push(cell);
         }
 
         cells
