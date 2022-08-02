@@ -34,8 +34,7 @@ impl Variable {
     fn eval(&self, x: f64, y: f64) -> f32 {
         match self {
             Variable::Perlin(fbm) => {
-                let value = fbm.get([x, y]);
-                value.abs().sqrt().copysign(value) as f32
+                fbm.get([x, y]) as f32
             }
             Variable::X => x as f32,
             Variable::Y => y as f32,
@@ -132,14 +131,28 @@ impl Generator {
         for var in &vars {
             let mut axis = Vec::with_capacity(num_cells);
             let mut y = 1.0;
+            let mut min = 1.0f32;
+            let mut max = -1.0f32;
             for _ in 0..height {
                 let mut x = -1.0;
                 for _ in 0..width {
-                    axis.push(var.eval(x, y));
+                    let value = var.eval(x, y);
+                    axis.push(value);
+                    min = min.min(value);
+                    max = max.max(value);
                     x += step_x;
                 }
                 y -= step_y;
             }
+
+            let scale = 2.0 / (max - min);
+            for v in &mut axis {
+                let mut value = *v;
+                value = scale * (value - min) - 1.0;
+                //value = value.abs().sqrt().copysign(value);
+                *v = value;
+            }
+
             axes.push(axis);
         }
 
