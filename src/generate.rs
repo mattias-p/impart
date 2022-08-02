@@ -133,16 +133,16 @@ impl Generator {
 
         let step_x = 2.0 / (width - 1) as f64;
         let step_y = 2.0 / (height - 1) as f64;
-        let mut y = 1.0;
-        for _ in 0..height {
-            let mut x = -1.0;
-            for _ in 0..width {
-                for (axis, var) in axes.iter_mut().zip(vars.iter()) {
+        for (axis, var) in axes.iter_mut().zip(vars.iter()) {
+            let mut y = 1.0;
+            for _ in 0..height {
+                let mut x = -1.0;
+                for _ in 0..width {
                     axis.push(var.eval(x, y));
+                    x += step_x;
                 }
-                x += step_x;
+                y -= step_y;
             }
-            y -= step_y;
         }
 
         Field { axes }
