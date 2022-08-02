@@ -27,20 +27,20 @@ pub enum VarSpec {
 /// A Cell describes geographic location
 pub struct Cell {
     /// Variables in the range 0.0 - 1.0 inclusive
-    pub vars: Vec<f32>,
+    pub values: Vec<f32>,
 }
 
 impl Cell {
     pub fn get(&self, id: VarId) -> f32 {
-        self.vars[id.index]
+        self.values[id.index]
     }
     pub fn as_slice(&self) -> &[f32] {
-        &self.vars
+        &self.values
     }
 }
 
 pub struct Generator {
-    vars: Vec<VarSpec>,
+    var_specs: Vec<VarSpec>,
 }
 
 pub enum Variable {
@@ -63,14 +63,12 @@ impl Variable {
 }
 
 impl Generator {
-    pub fn new(vars: Vec<VarSpec>) -> Self {
-        Generator { vars }
+    pub fn new(var_specs: Vec<VarSpec>) -> Self {
+        Generator { var_specs }
     }
 
     pub fn generate(&self, width: u16, height: u16, seed: u32) -> Vec<Cell> {
-        let mut noises = vec![];
-
-        noises.extend(self.vars.iter().enumerate().map(|(i, spec)| {
+        let vars: Vec<_> = self.var_specs.iter().enumerate().map(|(i, spec)| {
             match spec {
                 VarSpec::X => Variable::X,
                 VarSpec::Y => Variable::Y,
@@ -86,7 +84,7 @@ impl Generator {
                         .set_persistence(*persistence as f64),
                 ),
             }
-        }));
+        }).collect();
 
         let mut cells = Vec::with_capacity(width as usize * height as usize);
 
@@ -96,8 +94,8 @@ impl Generator {
         for _ in 0..height {
             let mut x = -1.0;
             for _ in 0..width {
-                let vars = noises.iter().map(|noise| noise.eval(x, y)).collect();
-                cells.push(Cell { vars });
+                let values = vars.iter().map(|var| var.eval(x, y)).collect();
+                cells.push(Cell { values });
 
                 x += step_x;
             }
