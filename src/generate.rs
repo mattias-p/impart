@@ -68,8 +68,11 @@ impl Generator {
     }
 
     pub fn generate(&self, width: u16, height: u16, seed: u32) -> Vec<Cell> {
-        let vars: Vec<_> = self.var_specs.iter().enumerate().map(|(i, spec)| {
-            match spec {
+        let vars: Vec<_> = self
+            .var_specs
+            .iter()
+            .enumerate()
+            .map(|(i, spec)| match spec {
                 VarSpec::X => Variable::X,
                 VarSpec::Y => Variable::Y,
                 VarSpec::Perlin {
@@ -83,10 +86,15 @@ impl Generator {
                         .set_frequency(*frequency as f64)
                         .set_persistence(*persistence as f64),
                 ),
-            }
-        }).collect();
+            })
+            .collect();
 
-        let mut cells = Vec::with_capacity(width as usize * height as usize);
+        let num_cells = width as usize * height as usize;
+        let mut axes: Vec<_> = self
+            .var_specs
+            .iter()
+            .map(|_| Vec::with_capacity(num_cells))
+            .collect();
 
         let step_x = 2.0 / (width - 1) as f64;
         let step_y = 2.0 / (height - 1) as f64;
@@ -94,15 +102,23 @@ impl Generator {
         for _ in 0..height {
             let mut x = -1.0;
             for _ in 0..width {
-                let mut values = Vec::with_capacity(self.var_specs.len());
-                for var in &vars {
-                    values.push(var.eval(x, y));
+                for (axis, var) in axes.iter_mut().zip(vars.iter()) {
+                    axis.push(var.eval(x, y));
                 }
-                cells.push(Cell { values });
                 x += step_x;
             }
             y -= step_y;
         }
+
+        let mut cells = Vec::with_capacity(num_cells);
+        for i in 0..num_cells {
+            let mut values = Vec::with_capacity(self.var_specs.len());
+            for axis in &axes {
+                values.push(axis[i]);
+            }
+            cells.push(Cell { values });
+        }
+
         cells
     }
 }
