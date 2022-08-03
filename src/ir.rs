@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::fmt;
+use std::ops;
 
 use palette::rgb::channels::Argb;
 use palette::Srgb;
@@ -43,90 +44,83 @@ impl fmt::Display for TyKind {
     }
 }
 
-pub trait Type {
+pub trait Type
+where
+    Self: Clone,
+{
     type Repr: Clone + Copy + fmt::Debug + PartialEq;
     fn eval(&self, cell: &Cell) -> Self::Repr;
-    fn reduce(&self) -> Expr<Self>
+    fn reduce(self) -> Expr<Self>
     where
         Self: Sized + Clone;
+
+    fn reduce_unary<R, F, G>(rhs: Expr<R>, op_immediate: F, op_deferred: G) -> Expr<Self>
+    where
+        R: Type,
+        F: Fn(R::Repr) -> Self::Repr,
+        G: Fn(Expr<R>) -> Self,
+    {
+        let rhs = rhs.reduce();
+        if let Some(rhs) = rhs.as_imm() {
+            Expr::Imm(op_immediate(rhs))
+        } else {
+            Expr::TypeOp(Box::new(op_deferred(rhs)))
+        }
+    }
+
+    fn reduce_binary<L, R, F, G>(
+        lhs: Expr<L>,
+        rhs: Expr<R>,
+        op_immediate: F,
+        op_deferred: G,
+    ) -> Expr<Self>
+    where
+        L: Type,
+        R: Type,
+        F: Fn(L::Repr, R::Repr) -> Self::Repr,
+        G: Fn(Expr<L>, Expr<R>) -> Self,
+    {
+        let lhs = lhs.reduce();
+        let rhs = rhs.reduce();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(op_immediate(lhs, rhs))
+        } else {
+            Expr::TypeOp(Box::new(op_deferred(lhs, rhs)))
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Bool {
-    Greater { lhs: Expr<Float>, rhs: Expr<Float> },
-    Less { lhs: Expr<Float>, rhs: Expr<Float> },
-    Not { rhs: Expr<Bool> },
-    And { lhs: Expr<Bool>, rhs: Expr<Bool> },
-    Xor { lhs: Expr<Bool>, rhs: Expr<Bool> },
-    Or { lhs: Expr<Bool>, rhs: Expr<Bool> },
+    Not(Expr<Bool>),
+    And(Expr<Bool>, Expr<Bool>),
+    Xor(Expr<Bool>, Expr<Bool>),
+    Or(Expr<Bool>, Expr<Bool>),
+    Greater(Expr<Float>, Expr<Float>),
+    Less(Expr<Float>, Expr<Float>),
 }
 impl Type for Bool {
     type Repr = bool;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            Bool::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
-            Bool::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
-            Bool::Not { rhs } => !rhs.eval(cell),
-            Bool::And { lhs, rhs } => lhs.eval(cell) && rhs.eval(cell),
-            Bool::Xor { lhs, rhs } => lhs.eval(cell) ^ rhs.eval(cell),
-            Bool::Or { lhs, rhs } => lhs.eval(cell) || rhs.eval(cell),
+            Bool::Not(rhs) => !rhs.eval(cell),
+            Bool::And(lhs, rhs) => lhs.eval(cell) && rhs.eval(cell),
+            Bool::Xor(lhs, rhs) => lhs.eval(cell) ^ rhs.eval(cell),
+            Bool::Or(lhs, rhs) => lhs.eval(cell) || rhs.eval(cell),
+            Bool::Greater(lhs, rhs) => lhs.eval(cell) > rhs.eval(cell),
+            Bool::Less(lhs, rhs) => lhs.eval(cell) < rhs.eval(cell),
         }
     }
-    fn reduce(&self) -> Expr<Self> {
+    fn reduce(self) -> Expr<Self> {
         match self {
-            Bool::Not { rhs } => {
-                let rhs = rhs.reduce();
-                if let Some(rhs) = rhs.as_imm() {
-                    Expr::Imm(!rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::Not { rhs }))
-                }
+            Bool::Not(rhs) => Self::reduce_unary(rhs, ops::Not::not, Bool::Not),
+            Bool::And(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitAnd::bitand, Bool::And),
+            Bool::Xor(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitXor::bitxor, Bool::Xor),
+            Bool::Or(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitOr::bitor, Bool::Or),
+            Bool::Greater(lhs, rhs) => {
+                Self::reduce_binary(lhs, rhs, |lhs, rhs| lhs > rhs, Bool::Greater)
             }
-            Bool::And { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs && rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::And { rhs, lhs }))
-                }
-            }
-            Bool::Xor { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs ^ rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::Xor { rhs, lhs }))
-                }
-            }
-            Bool::Or { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs || rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::Or { rhs, lhs }))
-                }
-            }
-            Bool::Greater { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs > rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::Greater { rhs, lhs }))
-                }
-            }
-            Bool::Less { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs < rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Bool::Less { rhs, lhs }))
-                }
-            }
+            Bool::Less(lhs, rhs) => Self::reduce_binary(lhs, rhs, |lhs, rhs| lhs < rhs, Bool::Less),
         }
     }
 }
@@ -143,7 +137,7 @@ impl Type for Color {
     fn eval(&self, _cell: &Cell) -> Self::Repr {
         unreachable!("Color does not have any operators");
     }
-    fn reduce(&self) -> Expr<Self> {
+    fn reduce(self) -> Expr<Self> {
         unreachable!("Color does not have any operators");
     }
 }
@@ -151,71 +145,32 @@ impl Type for Color {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Float {
     Variable(VarId),
-    Neg { rhs: Expr<Float> },
-    Mul { lhs: Expr<Float>, rhs: Expr<Float> },
-    Div { lhs: Expr<Float>, rhs: Expr<Float> },
-    Add { lhs: Expr<Float>, rhs: Expr<Float> },
-    Sub { lhs: Expr<Float>, rhs: Expr<Float> },
+    Neg(Expr<Float>),
+    Mul(Expr<Float>, Expr<Float>),
+    Div(Expr<Float>, Expr<Float>),
+    Add(Expr<Float>, Expr<Float>),
+    Sub(Expr<Float>, Expr<Float>),
 }
 impl Type for Float {
     type Repr = f32;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             Float::Variable(var) => cell.get(*var),
-            Float::Neg { rhs } => -rhs.eval(cell),
-            Float::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
-            Float::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
-            Float::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
-            Float::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
+            Float::Neg(rhs) => -rhs.eval(cell),
+            Float::Mul(lhs, rhs) => lhs.eval(cell) * rhs.eval(cell),
+            Float::Div(lhs, rhs) => lhs.eval(cell) / rhs.eval(cell),
+            Float::Add(lhs, rhs) => lhs.eval(cell) + rhs.eval(cell),
+            Float::Sub(lhs, rhs) => lhs.eval(cell) - rhs.eval(cell),
         }
     }
-    fn reduce(&self) -> Expr<Self> {
+    fn reduce(self) -> Expr<Self> {
         match self {
             Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
-            Float::Neg { rhs } => {
-                let rhs = rhs.reduce();
-                if let Some(rhs) = rhs.as_imm() {
-                    Expr::Imm(-rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Float::Neg { rhs }))
-                }
-            }
-            Float::Mul { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs * rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Float::Mul { rhs, lhs }))
-                }
-            }
-            Float::Div { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs / rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Float::Div { rhs, lhs }))
-                }
-            }
-            Float::Add { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs + rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Float::Add { rhs, lhs }))
-                }
-            }
-            Float::Sub { lhs, rhs } => {
-                let lhs = lhs.reduce();
-                let rhs = rhs.reduce();
-                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-                    Expr::Imm(lhs - rhs)
-                } else {
-                    Expr::TypeOp(Box::new(Float::Sub { rhs, lhs }))
-                }
-            }
+            Float::Neg(rhs) => Self::reduce_unary(rhs, ops::Neg::neg, Float::Neg),
+            Float::Mul(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Mul::mul, Float::Mul),
+            Float::Div(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Div::div, Float::Div),
+            Float::Add(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Add::add, Float::Add),
+            Float::Sub(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Sub::sub, Float::Sub),
         }
     }
 }
@@ -270,9 +225,9 @@ impl<T: Type + Clone> Expr<T> {
             Expr::TypeOp(op) => op.eval(cell),
         }
     }
-    pub fn reduce(&self) -> Self {
+    pub fn reduce(self) -> Self {
         match self {
-            Expr::Imm(_) => (*self).clone(),
+            Expr::Imm(_) => self,
             Expr::TypeOp(op) => op.reduce(),
             Expr::IfThenElse(if_then_else) => {
                 let cond = if_then_else.cond.reduce();
@@ -470,11 +425,11 @@ impl<'a> SymTable<'a> {
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Not { rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Not(rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Neg { rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Neg(rhs).into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such unary operator"),
             },
@@ -482,47 +437,47 @@ impl<'a> SymTable<'a> {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Mul { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Mul(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Solidus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Div { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Div(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Plus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Add { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Add(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Sub { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Sub(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Less => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Bool::Less { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Less(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Greater => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Bool::Greater { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Greater(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::And => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::And { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::And(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Xor => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Xor { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Xor(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 Op::Or => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Or { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Or(lhs, rhs).into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such binary operator"),
             },
