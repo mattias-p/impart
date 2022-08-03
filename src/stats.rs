@@ -58,11 +58,11 @@ pub struct Report {
 
 impl fmt::Display for Report {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "")?;
+        writeln!(f)?;
         for (min, max) in self.ranges.iter().flatten() {
             writeln!(f, "var range: [{:.6}; {:.6}] ({:.6})", min, max, max - min)?;
         }
-        writeln!(f, "")?;
+        writeln!(f)?;
         writeln!(
             f,
             "min range: [{:.6}; {:.6}] ({:.6})",

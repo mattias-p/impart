@@ -21,7 +21,7 @@ impl Source {
     pub fn error<S: AsRef<str>>(&self, message: S) -> String {
         let message = message.as_ref();
         match self {
-            Source::Inline => format!("{message}"),
+            Source::Inline => message.to_string(),
             Source::Def(line, col) => format!("{message} (defined at {line}:{col})"),
         }
     }
@@ -388,7 +388,7 @@ impl<'a> SymTable<'a> {
             }
             ast::Expr::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
-                None => Err(expr.error(format!("use of undeclared identifier"))),
+                None => Err(expr.error("use of undeclared identifier")),
             },
             ast::Expr::Constructor(inner) => match inner.kind {
                 lexer::Var::Perlin => {
@@ -571,7 +571,7 @@ impl<'a> SymTable<'a> {
     }
 }
 
-pub fn parse<'a>(expr: &Loc<ast::Expr<'a>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
+pub fn parse(expr: &Loc<ast::Expr<'_>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
     let symtable = SymTable::new();
     Ok((symtable.color_expr(expr)?, symtable.get_vars()))
 }

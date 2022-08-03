@@ -95,7 +95,7 @@ fn ident<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<&'a str>, String> {
     }
 }
 
-fn colon<'a>(lexer: &mut Lexer<'a>) -> Result<(), String> {
+fn colon(lexer: &mut Lexer<'_>) -> Result<(), String> {
     let token = lexer.next().unwrap()?;
     match token.inner {
         Token::Colon => Ok(()),
@@ -300,7 +300,7 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
     let expr = Expr::parse(lexer)?;
     let token = lexer.next().unwrap()?;
     if token.inner == Token::Eof {
-        return Ok(expr);
+        Ok(expr)
     } else {
         Err(token.error(format!(
             "expected 'let', 'if', literal or EOF got {:?}",
@@ -309,7 +309,7 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
     }
 }
 
-pub fn parse_source<'a>(source: &'a [u8]) -> Result<Loc<Expr<'a>>, String> {
+pub fn parse_source(source: &[u8]) -> Result<Loc<Expr<'_>>, String> {
     let mut lexer = Lexer::new(source);
     parse(&mut lexer)
 }

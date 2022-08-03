@@ -66,15 +66,15 @@ fn main() -> anyhow::Result<()> {
     };
     if cli.dump_source {
         std::io::stdout()
-            .write(&source)
+            .write(source)
             .context("Failed to write to stdout")?;
         return Ok(());
     }
 
     let file = File::create(&cli.outfile).context("Failed to open out file")?;
-    let ref mut w = BufWriter::new(file);
+    let w = &mut BufWriter::new(file);
 
-    let (prog, var_specs) = ir::parse_source(&source)
+    let (prog, var_specs) = ir::parse_source(source)
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
     let prog = prog.reduce();
