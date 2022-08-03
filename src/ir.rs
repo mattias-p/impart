@@ -45,22 +45,11 @@ impl fmt::Display for TyKind {
 
 pub trait Type {
     type Repr: Clone + Copy + fmt::Debug + PartialEq;
-    type Op: TypeOp<Repr = Self::Repr>;
-}
-
-pub trait TypeOp: Clone + fmt::Debug + PartialEq {
-    type Repr;
     fn eval(&self, cell: &Cell) -> Self::Repr;
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Bool;
-impl Type for Bool {
-    type Repr = bool;
-    type Op = BoolOp;
-}
-#[derive(Clone, Debug, PartialEq)]
-pub enum BoolOp {
+pub enum Bool {
     Greater { lhs: Expr<Float>, rhs: Expr<Float> },
     Less { lhs: Expr<Float>, rhs: Expr<Float> },
     Not { rhs: Expr<Bool> },
@@ -68,48 +57,36 @@ pub enum BoolOp {
     Xor { lhs: Expr<Bool>, rhs: Expr<Bool> },
     Or { lhs: Expr<Bool>, rhs: Expr<Bool> },
 }
-impl TypeOp for BoolOp {
+impl Type for Bool {
     type Repr = bool;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            BoolOp::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
-            BoolOp::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
-            BoolOp::Not { rhs } => !rhs.eval(cell),
-            BoolOp::And { lhs, rhs } => lhs.eval(cell) && rhs.eval(cell),
-            BoolOp::Xor { lhs, rhs } => lhs.eval(cell) ^ rhs.eval(cell),
-            BoolOp::Or { lhs, rhs } => lhs.eval(cell) || rhs.eval(cell),
+            Bool::Greater { lhs, rhs } => lhs.eval(cell) > rhs.eval(cell),
+            Bool::Less { lhs, rhs } => lhs.eval(cell) < rhs.eval(cell),
+            Bool::Not { rhs } => !rhs.eval(cell),
+            Bool::And { lhs, rhs } => lhs.eval(cell) && rhs.eval(cell),
+            Bool::Xor { lhs, rhs } => lhs.eval(cell) ^ rhs.eval(cell),
+            Bool::Or { lhs, rhs } => lhs.eval(cell) || rhs.eval(cell),
         }
     }
 }
-impl BoolOp {
+impl Bool {
     fn into_anyexpr(self) -> AnyExpr {
         AnyExpr::Bool(Expr::TypeOp(Box::new(self)))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Color;
+pub enum Color {}
 impl Type for Color {
     type Repr = Srgb<u8>;
-    type Op = ColorOp;
-}
-#[derive(Clone, Debug, PartialEq)]
-pub enum ColorOp {}
-impl TypeOp for ColorOp {
-    type Repr = Srgb<u8>;
     fn eval(&self, _cell: &Cell) -> Self::Repr {
-        unreachable!("ColorOp is a never-type");
+        unreachable!("Color does not have any operators");
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Float;
-impl Type for Float {
-    type Repr = f32;
-    type Op = FloatOp;
-}
-#[derive(Clone, Debug, PartialEq)]
-pub enum FloatOp {
+pub enum Float {
     Variable(VarId),
     Neg { rhs: Expr<Float> },
     Mul { lhs: Expr<Float>, rhs: Expr<Float> },
@@ -117,20 +94,20 @@ pub enum FloatOp {
     Add { lhs: Expr<Float>, rhs: Expr<Float> },
     Sub { lhs: Expr<Float>, rhs: Expr<Float> },
 }
-impl TypeOp for FloatOp {
+impl Type for Float {
     type Repr = f32;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            FloatOp::Variable(var) => cell.get(*var),
-            FloatOp::Neg { rhs } => -rhs.eval(cell),
-            FloatOp::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
-            FloatOp::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
-            FloatOp::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
-            FloatOp::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
+            Float::Variable(var) => cell.get(*var),
+            Float::Neg { rhs } => -rhs.eval(cell),
+            Float::Mul { lhs, rhs } => lhs.eval(cell) * rhs.eval(cell),
+            Float::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
+            Float::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
+            Float::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
         }
     }
 }
-impl FloatOp {
+impl Float {
     fn into_anyexpr(self) -> AnyExpr {
         AnyExpr::Float(Expr::TypeOp(Box::new(self)))
     }
@@ -157,7 +134,7 @@ impl AnyExpr {
 pub enum Expr<T: Type> {
     Imm(T::Repr),
     IfThenElse(Box<IfThenElse<T>>),
-    TypeOp(Box<T::Op>),
+    TypeOp(Box<T>),
 }
 
 impl<T: Type> Expr<T> {
@@ -321,7 +298,7 @@ impl<'a> SymTable<'a> {
                         persistence,
                     });
 
-                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
                 }
                 lexer::Var::X => {
                     if let Some(attr) = inner.attrs.first() {
@@ -330,7 +307,7 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::X);
-                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
                 }
                 lexer::Var::Y => {
                     if let Some(attr) = inner.attrs.first() {
@@ -339,7 +316,7 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::Y);
-                    Ok((FloatOp::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
                 }
             },
             ast::Expr::LetIn(inner) => {
@@ -350,11 +327,11 @@ impl<'a> SymTable<'a> {
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((BoolOp::Not { rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Not { rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((FloatOp::Neg { rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Neg { rhs }.into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such unary operator"),
             },
@@ -362,47 +339,47 @@ impl<'a> SymTable<'a> {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((FloatOp::Mul { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Mul { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Solidus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((FloatOp::Div { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Div { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Plus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((FloatOp::Add { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Add { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Minus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((FloatOp::Sub { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Float::Sub { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Less => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((BoolOp::Less { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Less { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Greater => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((BoolOp::Greater { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Greater { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::And => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((BoolOp::And { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::And { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Xor => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((BoolOp::Xor { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Xor { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 Op::Or => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((BoolOp::Or { lhs, rhs }.into_anyexpr(), Source::Inline))
+                    Ok((Bool::Or { lhs, rhs }.into_anyexpr(), Source::Inline))
                 }
                 _ => unreachable!("no such binary operator"),
             },
