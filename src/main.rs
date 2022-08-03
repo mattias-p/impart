@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
             .context("Failed to read source file")?;
         buffer.as_slice()
     } else {
-        include_bytes!("default.sbf")
+        include_bytes!("../examples/08-perlin.sbf")
     };
     if cli.dump_source {
         std::io::stdout()
