@@ -1,105 +1,59 @@
-// how much elevation is affected by Y-coordinate
-let slope =
-    0.50
-in
-
-// how much temperature is affected by elevation
-let geotemp =
-    0.25
-in
+let a = Perlin{ octaves: 6.0; frequency: 0.5; persistence: 0.5 } in
+let b = Perlin{ octaves: 6.0; frequency: 0.5; persistence: 0.5 } in
+let c = Perlin{ octaves: 6.0; frequency: 0.5; persistence: 0.5 } in
 
 
-// elevation, temperature and humidity axes
-let elevation =
-    let y =
-        Y{}
-    in
-    let raw_elevation =
-        Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.45 }
-    in
-    (1.0 - slope)*raw_elevation + slope*y
-in
-let temperature =
-    let raw_temperature =
-        Perlin{ octaves: 6.0; frequency: 0.5; persistence: 0.3 }
-    in
-    (1.0 - geotemp)*raw_temperature - geotemp*elevation
-in
-let humidity =
-    Perlin{ octaves: 6.0; frequency: 0.5; persistence: 0.3 }
-in
-
-
-// elevation, temperature and humidity zones
 let high = 1.0 / 4.0 in
 let low  = -1.0 / 4.0 in
 
-let lo_ele_zone =
-    elevation < low
-in
-let hi_ele_zone =
-    elevation > high
-in
-let md_ele_zone =
-    not hi_ele_zone and not lo_ele_zone
-in
 
-let lo_hum_zone =
-    humidity < low
-in
-let hi_hum_zone =
-    humidity > high
-in
-let md_hum_zone =
-    not hi_hum_zone and not lo_hum_zone
-in
+let lo_a = a < low in
+let hi_a = a > high in
+let md_a = not hi_a and not lo_a in
 
-let lo_temp_zone =
-    temperature < low
-in
-let hi_temp_zone =
-    temperature > high
-in
-let md_temp_zone =
-    not hi_temp_zone and not lo_temp_zone
-in
+let lo_b = b < low in
+let hi_b = b > high in
+let md_b = not hi_b and not lo_b in
+
+let lo_c = c < low in
+let hi_c = c > high in
+let md_c = not hi_c and not lo_c in
 
 
-// biomes
-if hi_ele_zone and hi_temp_zone and hi_hum_zone then #490071 else
-if hi_ele_zone and hi_temp_zone and md_hum_zone then #680024 else
-if hi_ele_zone and hi_temp_zone and lo_hum_zone then #6e0000 else
+if hi_a and hi_b and hi_c then #490071 else
+if hi_a and hi_b and md_c then #680024 else
+if hi_a and hi_b and lo_c then #6e0000 else
 
-if hi_ele_zone and md_temp_zone and hi_hum_zone then #002471 else
-if hi_ele_zone and md_temp_zone and md_hum_zone then #2f1d22 else
-if hi_ele_zone and md_temp_zone and lo_hum_zone then #3e1a00 else
+if hi_a and md_b and hi_c then #002471 else
+if hi_a and md_b and md_c then #2f1d22 else
+if hi_a and md_b and lo_c then #3e1a00 else
 
-if hi_ele_zone and lo_temp_zone and hi_hum_zone then #003670 else
-if hi_ele_zone and lo_temp_zone and md_hum_zone then #002e20 else
-if hi_ele_zone and lo_temp_zone and lo_hum_zone then #002c00 else
-
-
-if md_ele_zone and hi_temp_zone and hi_hum_zone then #ba4cde else
-if md_ele_zone and hi_temp_zone and md_hum_zone then #df4281 else
-if md_ele_zone and hi_temp_zone and lo_hum_zone then #eb3d20 else
-
-if md_ele_zone and md_temp_zone and hi_hum_zone then #347fdd else
-if md_ele_zone and md_temp_zone and md_hum_zone then #90797f else
-if md_ele_zone and md_temp_zone and lo_hum_zone then #a47615 else
-
-if md_ele_zone and lo_temp_zone and hi_hum_zone then #0097dc else
-if md_ele_zone and lo_temp_zone and md_hum_zone then #00927d else
-if md_ele_zone and lo_temp_zone and lo_hum_zone then #429005 else
+if hi_a and lo_b and hi_c then #003670 else
+if hi_a and lo_b and md_c then #002e20 else
+if hi_a and lo_b and lo_c then #002c00 else
 
 
-if lo_ele_zone and hi_temp_zone and hi_hum_zone then #ffbdff else
-if lo_ele_zone and hi_temp_zone and md_hum_zone then #ffb6ed else
-if lo_ele_zone and hi_temp_zone and lo_hum_zone then #ffb284 else
+if md_a and hi_b and hi_c then #ba4cde else
+if md_a and hi_b and md_c then #df4281 else
+if md_a and hi_b and lo_c then #eb3d20 else
 
-if lo_ele_zone and md_temp_zone and hi_hum_zone then #b7ebff else
-if lo_ele_zone and md_temp_zone and md_hum_zone then #ffe5eb else
-if lo_ele_zone and md_temp_zone and lo_hum_zone then #ffe180 else
+if md_a and md_b and hi_c then #347fdd else
+if md_a and md_b and md_c then #90797f else
+if md_a and md_b and lo_c then #a47615 else
 
-if lo_ele_zone and lo_temp_zone and hi_hum_zone then #a3ffff else
-if lo_ele_zone and lo_temp_zone and md_hum_zone then #8dffe9 else
-                                                     #b4ff7c
+if md_a and lo_b and hi_c then #0097dc else
+if md_a and lo_b and md_c then #00927d else
+if md_a and lo_b and lo_c then #429005 else
+
+
+if lo_a and hi_b and hi_c then #ffbdff else
+if lo_a and hi_b and md_c then #ffb6ed else
+if lo_a and hi_b and lo_c then #ffb284 else
+
+if lo_a and md_b and hi_c then #b7ebff else
+if lo_a and md_b and md_c then #ffe5eb else
+if lo_a and md_b and lo_c then #ffe180 else
+
+if lo_a and lo_b and hi_c then #a3ffff else
+if lo_a and lo_b and md_c then #8dffe9 else
+                               #b4ff7c

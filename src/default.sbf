@@ -1,29 +1,32 @@
-let slope = 0.5 in
+let color_a = #df4281 in
+let color_b = #347fdd in
+let color_c = #a47615 in
+let color_d = #00927d in
+let color_a_extra = #ffb6ed in
+let color_b_extra = #b7ebff in
+let color_c_extra = #ffe180 in
+let color_d_extra = #8dffe9 in
 
-let red       = #ff8888 in
-let green     = #88ff88 in
-let blue      = #8888ff in
-let deepred   = #ff0000 in
-let deepgreen = #00ff00 in
-let deepblue  = #0000ff in
+let a = Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.5 } in
+let b = Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.5 } in
+let c = Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.5 } in
+let d = Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.5 } in
 
-let y             = Y{} in
-let raw_elevation = Perlin{ octaves: 6.0; frequency: 1.0; persistence: 0.5 } in
-let humidity      = Perlin{ octaves: 3.0; frequency: 0.5; persistence: 0.5 } in
-let temperature   = Perlin{ octaves: 3.0; frequency: 0.5; persistence: 0.5 } in
-let elevation     = (1.0 - slope)*raw_elevation + slope*y in
+let dom_a = a > b and a > c and a > d in
+let dom_b = b > a and b > c and b > d in
+let dom_c = c > a and c > b and c > d in
+let dom_d = d > a and d > b and d > c in
 
-let high = elevation   > humidity    and elevation   > temperature in
-let wet  = humidity    > temperature and humidity    > elevation   in
-let hot  = temperature > elevation   and temperature > humidity    in
+let sup_a = 1+a > (b+1)*5/4 and 1+a > (c+1)*5/4 and 1+a > (d+1)*5/4 in
+let sup_b = 1+b > (a+1)*5/4 and 1+b > (c+1)*5/4 and 1+b > (d+1)*5/4 in
+let sup_c = 1+c > (a+1)*5/4 and 1+c > (b+1)*5/4 and 1+c > (d+1)*5/4 in
+let sup_d = 1+d > (a+1)*5/4 and 1+d > (b+1)*5/4 and 1+d > (c+1)*5/4 in
 
-let higher = high and 1.0+elevation   > (2.0 + humidity    + temperature) * 0.65 in
-let hotter = hot  and 1.0+temperature > (2.0 + elevation   + humidity)    * 0.65 in
-let wetter = wet  and 1.0+humidity    > (2.0 + temperature + elevation)   * 0.65 in
-
-if higher then deepblue  else
-if hotter then deepred   else
-if wetter then deepgreen else
-if high   then blue       else
-if hot    then red        else
-green
+if sup_a then color_a_extra else
+if sup_b then color_b_extra else
+if sup_c then color_c_extra else
+if sup_d then color_d_extra else
+if dom_a then color_a else
+if dom_b then color_b else
+if dom_c then color_c else
+              color_d
