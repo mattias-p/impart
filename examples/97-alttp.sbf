@@ -1,0 +1,39 @@
+let mountains = #88552c in
+let greenery = #869161 in
+let dearth = #cca244 in
+
+let bias_e_y = 0.6 in
+let bias_p_e = 0.9 in
+
+let y_raw = Y {} in
+let e_raw = Perlin { octaves: 6; frequency: 1.0; persistence: 0.33} in
+let p_raw = Perlin { octaves: 6; frequency: 0.75; persistence: 0.33} in
+
+let e = (e_raw+1) * (1-bias_e_y) + bias_e_y * (1+y_raw) - 1 in
+let e_point_1 = 0.50 in
+let e_point_2 = 0.05 in
+let e_point_3 = -0.05 in  // Maybe we don't need so many points?
+let p =
+    let k1 = 0.5 in
+    let k2 = 0.0 in
+
+    let e_aug1 = if e > e_point_2 then
+        e
+    else
+        (e - e_point_2) * k1 + e_point_2
+    in
+    let e_aug2 = if e_aug1 > e_point_3 then
+        e_aug1
+    else
+        (e_aug1 - e_point_3) * k2 + e_point_3
+    in
+    (p_raw-1) * 0.2 + e_aug2
+in
+let p_point_1 = -0.25 in
+
+if e > e_point_1 then
+    mountains
+else if p > p_point_1 then
+    greenery
+else
+    dearth
