@@ -1,0 +1,11 @@
+// This is a comment; it is meant for human consumption and is ignored by the
+// compiler.
+// A comment starts with two forward slashes and extends to the end of the line.
+
+// The goal of a program is to calculate a color.
+// Colors are expressed as six-digit hex triplets.
+// See: https://en.wikipedia.org/wiki/Web_colors#Hex_triplet
+
+// The simplest program just names a color.
+
+#008000

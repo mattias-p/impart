@@ -1,0 +1,15 @@
+// Definitions can be used to name things so you can refer to them later.
+// Names can be anything but they must consist of letters, digits and
+// underscores (_) only, starting with a letter.
+// The accepted letters are A-Z and a-z and the digits are 0-9.
+
+// Whitespace characters (i.e. space characters new-line characters) are mostly
+// ignored by the compiler, though sometimes it is required to delimit syntactic
+// elements.
+// That said judicious use of whitespace is very helpful to the human reader.
+
+let plum =
+    #dda0dd
+in
+
+plum

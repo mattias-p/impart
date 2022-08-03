@@ -1,0 +1,12 @@
+let blue = #0055a4 in
+let white = #ffffff in
+let red = #ef4135 in
+
+let value = Perlin { octaves: 6; frequency: 1.0; persistence: 0.5 } in
+
+if value < -0.3 then
+    blue
+else if value > 0.3 then
+    red
+else
+    white

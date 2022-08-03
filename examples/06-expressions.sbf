@@ -1,0 +1,25 @@
+let yellow = #ffcd00 in
+let blue = #004b87 in
+
+let number = 6/5 in
+
+let between_one_and_two =
+    let more_than_one = number > 1 in
+    let less_than_two = number < 2 in
+
+    more_than_one and less_than_two
+in
+
+let area = 
+    if between_one_and_two then
+        let h = (1.1 + 2.2) * 3 in
+
+        h * h * 3.14159
+    else
+        0.0
+in
+
+if area > 1 then
+    blue
+else
+    yellow

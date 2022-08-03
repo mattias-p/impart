@@ -1,0 +1,13 @@
+let yellow = #ffcd00 in
+let blue = #004b87 in
+
+let number = 5.0 in
+let less_than_three = number < 3 in
+let more_than_six = number > 6 in
+
+if less_than_three then
+    yellow
+else if more_than_six then
+    yellow
+else
+    blue
