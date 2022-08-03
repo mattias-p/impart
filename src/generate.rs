@@ -33,9 +33,7 @@ pub enum Variable {
 impl Variable {
     fn eval(&self, x: f64, y: f64) -> f32 {
         match self {
-            Variable::Perlin(fbm) => {
-                fbm.get([x, y]) as f32
-            }
+            Variable::Perlin(fbm) => fbm.get([x, y]) as f32,
             Variable::X => x as f32,
             Variable::Y => y as f32,
         }
@@ -159,9 +157,6 @@ impl Generator {
             axes.push(axis);
         }
 
-        Field {
-            len,
-            axes,
-        }
+        Field { len, axes }
     }
 }

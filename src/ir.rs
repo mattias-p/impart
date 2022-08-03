@@ -46,6 +46,9 @@ impl fmt::Display for TyKind {
 pub trait Type {
     type Repr: Clone + Copy + fmt::Debug + PartialEq;
     fn eval(&self, cell: &Cell) -> Self::Repr;
+    fn reduce(&self) -> Expr<Self>
+    where
+        Self: Sized + Clone;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,6 +72,63 @@ impl Type for Bool {
             Bool::Or { lhs, rhs } => lhs.eval(cell) || rhs.eval(cell),
         }
     }
+    fn reduce(&self) -> Expr<Self> {
+        match self {
+            Bool::Not { rhs } => {
+                let rhs = rhs.reduce();
+                if let Some(rhs) = rhs.as_imm() {
+                    Expr::Imm(!rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::Not { rhs }))
+                }
+            }
+            Bool::And { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs && rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::And { rhs, lhs }))
+                }
+            }
+            Bool::Xor { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs ^ rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::Xor { rhs, lhs }))
+                }
+            }
+            Bool::Or { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs || rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::Or { rhs, lhs }))
+                }
+            }
+            Bool::Greater { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs > rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::Greater { rhs, lhs }))
+                }
+            }
+            Bool::Less { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs < rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Bool::Less { rhs, lhs }))
+                }
+            }
+        }
+    }
 }
 impl Bool {
     fn into_anyexpr(self) -> AnyExpr {
@@ -81,6 +141,9 @@ pub enum Color {}
 impl Type for Color {
     type Repr = Srgb<u8>;
     fn eval(&self, _cell: &Cell) -> Self::Repr {
+        unreachable!("Color does not have any operators");
+    }
+    fn reduce(&self) -> Expr<Self> {
         unreachable!("Color does not have any operators");
     }
 }
@@ -104,6 +167,55 @@ impl Type for Float {
             Float::Div { lhs, rhs } => lhs.eval(cell) / rhs.eval(cell),
             Float::Add { lhs, rhs } => lhs.eval(cell) + rhs.eval(cell),
             Float::Sub { lhs, rhs } => lhs.eval(cell) - rhs.eval(cell),
+        }
+    }
+    fn reduce(&self) -> Expr<Self> {
+        match self {
+            Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
+            Float::Neg { rhs } => {
+                let rhs = rhs.reduce();
+                if let Some(rhs) = rhs.as_imm() {
+                    Expr::Imm(-rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Float::Neg { rhs }))
+                }
+            }
+            Float::Mul { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs * rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Float::Mul { rhs, lhs }))
+                }
+            }
+            Float::Div { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs / rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Float::Div { rhs, lhs }))
+                }
+            }
+            Float::Add { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs + rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Float::Add { rhs, lhs }))
+                }
+            }
+            Float::Sub { lhs, rhs } => {
+                let lhs = lhs.reduce();
+                let rhs = rhs.reduce();
+                if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+                    Expr::Imm(lhs - rhs)
+                } else {
+                    Expr::TypeOp(Box::new(Float::Sub { rhs, lhs }))
+                }
+            }
         }
     }
 }
@@ -131,13 +243,20 @@ impl AnyExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr<T: Type> {
+pub enum Expr<T: Type + Clone> {
     Imm(T::Repr),
-    IfThenElse(Box<IfThenElse<T>>),
     TypeOp(Box<T>),
+    IfThenElse(Box<IfThenElse<T>>),
 }
 
-impl<T: Type> Expr<T> {
+impl<T: Type + Clone> Expr<T> {
+    pub fn as_imm(&self) -> Option<T::Repr> {
+        if let Expr::Imm(value) = self {
+            Some(*value)
+        } else {
+            None
+        }
+    }
     pub fn eval(&self, cell: &Cell) -> T::Repr {
         match self {
             Expr::Imm(value) => *value,
@@ -151,10 +270,34 @@ impl<T: Type> Expr<T> {
             Expr::TypeOp(op) => op.eval(cell),
         }
     }
+    pub fn reduce(&self) -> Self {
+        match self {
+            Expr::Imm(_) => (*self).clone(),
+            Expr::TypeOp(op) => op.reduce(),
+            Expr::IfThenElse(if_then_else) => {
+                let cond = if_then_else.cond.reduce();
+                let if_true = if_then_else.if_true.reduce();
+                let if_false = if_then_else.if_false.reduce();
+                if let Some(cond) = cond.as_imm() {
+                    if cond {
+                        if_true
+                    } else {
+                        if_false
+                    }
+                } else {
+                    Expr::IfThenElse(Box::new(IfThenElse {
+                        cond,
+                        if_true,
+                        if_false,
+                    }))
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct IfThenElse<T: Type> {
+pub struct IfThenElse<T: Type + Clone> {
     pub cond: Expr<Bool>,
     pub if_true: Expr<T>,
     pub if_false: Expr<T>,
