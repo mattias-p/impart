@@ -49,7 +49,7 @@ pub trait Type
 where
     Self: Clone,
 {
-    type Repr: Clone + Copy + fmt::Debug + PartialEq;
+    type Repr: Clone + Copy + fmt::Debug + Default + PartialEq;
     fn eval(&self, cell: &Cell) -> Self::Repr;
     fn eval_static(self) -> Expr<Self>
     where
@@ -199,10 +199,28 @@ impl AnyExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Def<T: Type + Clone> {
+    inner: Loc<RefCell<Expr<T>>>,
+}
+
+impl<T: Type + Clone> Def<T> {
+    pub fn eval(&self, cell: &Cell) -> T::Repr {
+        self.inner.inner.borrow().eval(cell)
+    }
+    pub fn eval_static(&self) {
+        let tmp = RefCell::new(Expr::Imm(Default::default()));
+        self.inner.inner.swap(&tmp);
+        let expr = tmp.into_inner().eval_static();
+        self.inner.inner.replace(expr);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr<T: Type + Clone> {
     Imm(T::Repr),
     TypeOp(Box<T>),
     IfThenElse(Box<IfThenElse<T>>),
+    Ref(Rc<Def<T>>),
 }
 
 impl<T: Type + Clone> Expr<T> {
@@ -213,6 +231,7 @@ impl<T: Type + Clone> Expr<T> {
             None
         }
     }
+
     pub fn eval(&self, cell: &Cell) -> T::Repr {
         match self {
             Expr::Imm(value) => *value,
@@ -224,8 +243,10 @@ impl<T: Type + Clone> Expr<T> {
                 }
             }
             Expr::TypeOp(op) => op.eval(cell),
+            Expr::Ref(def) => def.eval(cell),
         }
     }
+
     pub fn eval_static(self) -> Self {
         match self {
             Expr::Imm(_) => self,
@@ -247,6 +268,9 @@ impl<T: Type + Clone> Expr<T> {
                         if_false,
                     }))
                 }
+            }
+            Expr::Ref(ref def) => {def.eval_static();
+                self
             }
         }
     }
