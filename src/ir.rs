@@ -255,7 +255,11 @@ impl<T: Type + Clone> Expr<T> {
             }
             Expr::Ref(ref def) => {
                 def.eval_static();
-                self
+                if (*def.inner.inner.borrow()).as_imm().is_some() {
+                    def.inner.inner.borrow().clone()
+                } else {
+                    self
+                }
             }
         }
     }
