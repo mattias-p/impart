@@ -202,7 +202,6 @@ impl AnyExpr {
 pub struct Def<T: Type + Clone> {
     inner: Loc<RefCell<Expr<T>>>,
 }
-
 impl<T: Type + Clone> Def<T> {
     pub fn eval(&self, cell: &Cell) -> T::Repr {
         self.inner.inner.borrow().eval(cell)
@@ -269,7 +268,8 @@ impl<T: Type + Clone> Expr<T> {
                     }))
                 }
             }
-            Expr::Ref(ref def) => {def.eval_static();
+            Expr::Ref(ref def) => {
+                def.eval_static();
                 self
             }
         }
@@ -332,9 +332,20 @@ impl<'a> SymTable<'a> {
     }
 
     pub fn with_def(&'a self, sym: Loc<&'a str>, value: AnyExpr) -> SymTable<'a> {
+        let expr = match value {
+            AnyExpr::Bool(expr) => AnyExpr::Bool(Expr::Ref(Rc::new(Def {
+                inner: sym.map(|_| RefCell::new(expr)),
+            }))),
+            AnyExpr::Color(expr) => AnyExpr::Color(Expr::Ref(Rc::new(Def {
+                inner: sym.map(|_| RefCell::new(expr)),
+            }))),
+            AnyExpr::Float(expr) => AnyExpr::Float(Expr::Ref(Rc::new(Def {
+                inner: sym.map(|_| RefCell::new(expr)),
+            }))),
+        };
         SymTable::Sym {
             sym: sym.inner,
-            value: Rc::new(sym.map(|_| value)),
+            value: Rc::new(sym.map(|_| expr)),
             next: self,
         }
     }
@@ -444,8 +455,7 @@ impl<'a> SymTable<'a> {
             },
             ast::Expr::LetIn(inner) => {
                 let (def, _) = self.any_expr(&inner.definition)?;
-                let def = inner.term.map(|_| def);
-                self.with_def(inner.term, def.inner).any_expr(&inner.expr)
+                self.with_def(inner.term, def).any_expr(&inner.expr)
             }
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
@@ -580,14 +590,26 @@ mod tests {
     fn let_in() {
         assert_eq!(
             check(b"let brown = #123456 in\nbrown"),
-            Ok(Expr::Imm(color("123456"))),
+            Ok(Expr::Ref(Rc::new(Def {
+                inner: Loc {
+                    line: 1,
+                    col: 5,
+                    inner: RefCell::new(Expr::Imm(color("123456")))
+                }
+            }))),
         );
     }
     #[test]
     fn let_in_let_in() {
         assert_eq!(
             check(b"let foo = #123456 in\nlet foo = #654321 in\nfoo"),
-            Ok(Expr::Imm(color("654321"))),
+            Ok(Expr::Ref(Rc::new(Def {
+                inner: Loc {
+                    line: 2,
+                    col: 5,
+                    inner: RefCell::new(Expr::Imm(color("654321")))
+                }
+            }))),
         );
     }
 }
