@@ -296,8 +296,9 @@ impl<'a> Expr<'a> {
     }
 }
 
-pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
-    let expr = Expr::parse(lexer)?;
+pub fn parse_source(source: &[u8]) -> Result<Loc<Expr<'_>>, String> {
+    let mut lexer = Lexer::new(source);
+    let expr = Expr::parse(&mut lexer)?;
     let token = lexer.next().unwrap()?;
     if token.inner == Token::Eof {
         Ok(expr)
@@ -307,11 +308,6 @@ pub fn parse<'a>(lexer: &mut Lexer<'a>) -> Result<Loc<Expr<'a>>, String> {
             token.inner
         )))?
     }
-}
-
-pub fn parse_source(source: &[u8]) -> Result<Loc<Expr<'_>>, String> {
-    let mut lexer = Lexer::new(source);
-    parse(&mut lexer)
 }
 
 #[cfg(test)]
@@ -334,10 +330,10 @@ mod tests {
     #[test]
     fn hexcode() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //1234567
                 b"#123456",
-            )),
+            ),
             Ok(Expr::Hexcode("123456").loc(1, 1)),
         );
     }
@@ -345,10 +341,10 @@ mod tests {
     #[test]
     fn ident() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //123
                 b"foo",
-            )),
+            ),
             Ok(Expr::Ident("foo").loc(1, 1)),
         );
     }
@@ -356,11 +352,11 @@ mod tests {
     #[test]
     fn let_x() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2
                 //123456789012345678901234
                 b"let pi = 3.14 in foo",
-            )),
+            ),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
                 definition: Expr::Float("3.14").loc(1, 10),
@@ -373,11 +369,11 @@ mod tests {
     #[test]
     fn let_x_let_y() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2         3
                 //12345678901234567890123456789012345678
                 b"let pi = 3.14 in let tau = 6.28 in foo",
-            )),
+            ),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "pi".loc(1, 5),
                 definition: Expr::Float("3.14").loc(1, 10),
@@ -395,11 +391,11 @@ mod tests {
     #[test]
     fn if_a_x_else_y() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2         3
                 //123456789012345678901234567890123456789
                 b"if 0.6 > 0.5 then brown else cyan",
-            )),
+            ),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
@@ -417,11 +413,11 @@ mod tests {
     #[test]
     fn if_a_x_else_if_b_y_else_z() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2         3         4         5         6         7         8
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if 0.6 > 0.5 then cyan else if 0.4 < 0.31 then sandybrown else rosybrown"
-            )),
+            ),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
@@ -449,11 +445,11 @@ mod tests {
     #[test]
     fn if_a_if_b_x_else_y_else_z() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2         3         4         5         6         7         8
                 //12345678901234567890123456789012345678901234567890123456789012345678901234567890123
                 b"if 0.6 > 0.5 then if 0.4 < 0.31 then sandybrown else rosybrown else cyan",
-            )),
+            ),
             Ok(Expr::IfElse(Box::new(IfElse {
                 cond: Expr::BinOp(Box::new(BinOp {
                     op: Op::Greater,
@@ -481,11 +477,11 @@ mod tests {
     #[test]
     fn wip() {
         assert_eq!(
-            parse(&mut Lexer::new(
+            parse_source(
                 //         1         2         3           1         2         3
                 //123456789012345678901234567890  1234567890123456789012345678901234  1234567
                 b"let peak = #A38983 in // brown\nlet mountain = #805C54 in // brown\n#123456"
-            )),
+            ),
             Ok(Expr::LetIn(Box::new(LetIn {
                 term: "peak".loc(1, 5),
                 definition: Expr::Hexcode("A38983").loc(1, 12),

@@ -526,14 +526,12 @@ impl<'a> SymTable<'a> {
     }
 }
 
-pub fn parse(expr: &Loc<ast::Expr<'_>>) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
-    let symtable = SymTable::new();
-    Ok((symtable.color_expr(expr)?, symtable.get_vars()))
-}
-
 pub fn parse_source(source: &[u8]) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
     let tree = ast::parse_source(source)?;
-    parse(&tree)
+    let symtable = SymTable::new();
+    let expr = symtable.color_expr(&tree)?;
+    let vars = symtable.get_vars();
+    Ok((expr, vars))
 }
 
 #[cfg(test)]
