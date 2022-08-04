@@ -51,7 +51,7 @@ where
 {
     type Repr: Clone + Copy + fmt::Debug + PartialEq;
     fn eval(&self, cell: &Cell) -> Self::Repr;
-    fn reduce(self) -> Expr<Self>
+    fn eval_static(self) -> Expr<Self>
     where
         Self: Sized + Clone;
 
@@ -61,7 +61,7 @@ where
         F: Fn(R::Repr) -> Self::Repr,
         G: Fn(Expr<R>) -> Self,
     {
-        let rhs = rhs.reduce();
+        let rhs = rhs.eval_static();
         if let Some(rhs) = rhs.as_imm() {
             Expr::Imm(op_immediate(rhs))
         } else {
@@ -81,8 +81,8 @@ where
         F: Fn(L::Repr, R::Repr) -> Self::Repr,
         G: Fn(Expr<L>, Expr<R>) -> Self,
     {
-        let lhs = lhs.reduce();
-        let rhs = rhs.reduce();
+        let lhs = lhs.eval_static();
+        let rhs = rhs.eval_static();
         if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
             Expr::Imm(op_immediate(lhs, rhs))
         } else {
@@ -112,7 +112,7 @@ impl Type for Bool {
             Bool::Less(lhs, rhs) => lhs.eval(cell) < rhs.eval(cell),
         }
     }
-    fn reduce(self) -> Expr<Self> {
+    fn eval_static(self) -> Expr<Self> {
         match self {
             Bool::Not(rhs) => Self::reduce_unary(rhs, ops::Not::not, Bool::Not),
             Bool::And(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitAnd::bitand, Bool::And),
@@ -138,7 +138,7 @@ impl Type for Color {
     fn eval(&self, _cell: &Cell) -> Self::Repr {
         unreachable!("Color does not have any operators");
     }
-    fn reduce(self) -> Expr<Self> {
+    fn eval_static(self) -> Expr<Self> {
         unreachable!("Color does not have any operators");
     }
 }
@@ -164,7 +164,7 @@ impl Type for Float {
             Float::Sub(lhs, rhs) => lhs.eval(cell) - rhs.eval(cell),
         }
     }
-    fn reduce(self) -> Expr<Self> {
+    fn eval_static(self) -> Expr<Self> {
         match self {
             Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
             Float::Neg(rhs) => Self::reduce_unary(rhs, ops::Neg::neg, Float::Neg),
@@ -226,14 +226,14 @@ impl<T: Type + Clone> Expr<T> {
             Expr::TypeOp(op) => op.eval(cell),
         }
     }
-    pub fn reduce(self) -> Self {
+    pub fn eval_static(self) -> Self {
         match self {
             Expr::Imm(_) => self,
-            Expr::TypeOp(op) => op.reduce(),
+            Expr::TypeOp(op) => op.eval_static(),
             Expr::IfThenElse(if_then_else) => {
-                let cond = if_then_else.cond.reduce();
-                let if_true = if_then_else.if_true.reduce();
-                let if_false = if_then_else.if_false.reduce();
+                let cond = if_then_else.cond.eval_static();
+                let if_true = if_then_else.if_true.eval_static();
+                let if_false = if_then_else.if_false.eval_static();
                 if let Some(cond) = cond.as_imm() {
                     if cond {
                         if_true

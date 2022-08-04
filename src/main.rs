@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
     let (prog, var_specs) = ir::parse_source(source)
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
-    let prog = prog.reduce();
+    let prog = prog.eval_static();
 
     let generator = Generator::new(var_specs.clone());
     let stats = Stats::new(var_specs);
