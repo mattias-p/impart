@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::ops;
+use std::rc::Rc;
 
 use palette::rgb::channels::Argb;
 use palette::Srgb;
@@ -274,7 +275,7 @@ pub enum SymTable<'a> {
     },
     Sym {
         sym: &'a str,
-        value: Loc<AnyExpr>,
+        value: Rc<Loc<AnyExpr>>,
         next: &'a SymTable<'a>,
     },
 }
@@ -293,7 +294,7 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    pub fn symbol(&self, name: &str) -> Option<Loc<AnyExpr>> {
+    pub fn symbol(&self, name: &str) -> Option<Rc<Loc<AnyExpr>>> {
         match &*self {
             SymTable::Sym { sym, value, next } => {
                 if *sym == name {
@@ -309,7 +310,7 @@ impl<'a> SymTable<'a> {
     pub fn with_def(&'a self, sym: Loc<&'a str>, value: AnyExpr) -> SymTable<'a> {
         SymTable::Sym {
             sym: sym.inner,
-            value: sym.map(|_| value),
+            value: Rc::new(sym.map(|_| value)),
             next: self,
         }
     }
