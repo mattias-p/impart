@@ -14,21 +14,6 @@ use crate::lexer;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 
-pub enum Source {
-    Inline,
-    Def(usize, usize),
-}
-
-impl Source {
-    pub fn error<S: AsRef<str>>(&self, message: S) -> String {
-        let message = message.as_ref();
-        match self {
-            Source::Inline => message.to_string(),
-            Source::Def(line, col) => format!("{message} (defined at {line}:{col})"),
-        }
-    }
-}
-
 pub enum TyKind {
     Bool,
     Float,
@@ -274,6 +259,17 @@ impl<T: Type + Clone> Expr<T> {
             }
         }
     }
+
+    pub fn error<S: AsRef<str>>(&self, message: S) -> String {
+        let message = message.as_ref();
+        match self {
+            Expr::Ref(def) => format!(
+                "{message} (defined at {}:{})",
+                def.inner.line, def.inner.col
+            ),
+            _ => message.to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -362,23 +358,22 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    pub fn any_expr(&self, expr: &'a Loc<ast::Expr<'a>>) -> Result<(AnyExpr, Source), String> {
+    pub fn any_expr(&self, expr: &'a Loc<ast::Expr<'a>>) -> Result<AnyExpr, String> {
         match &expr.inner {
-            ast::Expr::True => Ok((AnyExpr::Bool(Expr::Imm(true)), Source::Inline)),
-            ast::Expr::False => Ok((AnyExpr::Bool(Expr::Imm(false)), Source::Inline)),
+            ast::Expr::True => Ok(AnyExpr::Bool(Expr::Imm(true))),
+            ast::Expr::False => Ok(AnyExpr::Bool(Expr::Imm(false))),
             ast::Expr::Float(s) => {
                 let decoded = s.parse::<f32>().unwrap();
-                Ok((AnyExpr::Float(Expr::Imm(decoded)), Source::Inline))
+                Ok(AnyExpr::Float(Expr::Imm(decoded)))
             }
             ast::Expr::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
-                Ok((
-                    AnyExpr::Color(Expr::Imm(Srgb::<u8>::from_u32::<Argb>(argb))),
-                    Source::Inline,
-                ))
+                Ok(AnyExpr::Color(Expr::Imm(Srgb::<u8>::from_u32::<Argb>(
+                    argb,
+                ))))
             }
             ast::Expr::Ident(s) => match self.symbol(s) {
-                Some(def) => Ok((def.inner.clone(), Source::Def(def.line, def.col))),
+                Some(def) => Ok(def.inner.clone()),
                 None => Err(expr.error("use of undeclared identifier")),
             },
             ast::Expr::Constructor(inner) => match inner.kind {
@@ -432,7 +427,7 @@ impl<'a> SymTable<'a> {
                         persistence,
                     });
 
-                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok(Float::Variable(variable).into_anyexpr())
                 }
                 lexer::Var::X => {
                     if let Some(attr) = inner.attrs.first() {
@@ -441,7 +436,7 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::X);
-                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok(Float::Variable(variable).into_anyexpr())
                 }
                 lexer::Var::Y => {
                     if let Some(attr) = inner.attrs.first() {
@@ -450,21 +445,21 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::Y);
-                    Ok((Float::Variable(variable).into_anyexpr(), Source::Inline))
+                    Ok(Float::Variable(variable).into_anyexpr())
                 }
             },
             ast::Expr::LetIn(inner) => {
-                let (def, _) = self.any_expr(&inner.definition)?;
+                let def = self.any_expr(&inner.definition)?;
                 self.with_def(inner.term, def).any_expr(&inner.expr)
             }
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Not(rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::Not(rhs).into_anyexpr())
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Neg(rhs).into_anyexpr(), Source::Inline))
+                    Ok(Float::Neg(rhs).into_anyexpr())
                 }
                 _ => unreachable!("no such unary operator"),
             },
@@ -472,58 +467,58 @@ impl<'a> SymTable<'a> {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Mul(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Float::Mul(lhs, rhs).into_anyexpr())
                 }
                 Op::Solidus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Div(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Float::Div(lhs, rhs).into_anyexpr())
                 }
                 Op::Plus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Add(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Float::Add(lhs, rhs).into_anyexpr())
                 }
                 Op::Minus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Float::Sub(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Float::Sub(lhs, rhs).into_anyexpr())
                 }
                 Op::Less => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Bool::Less(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::Less(lhs, rhs).into_anyexpr())
                 }
                 Op::Greater => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok((Bool::Greater(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::Greater(lhs, rhs).into_anyexpr())
                 }
                 Op::And => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::And(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::And(lhs, rhs).into_anyexpr())
                 }
                 Op::Xor => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Xor(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::Xor(lhs, rhs).into_anyexpr())
                 }
                 Op::Or => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok((Bool::Or(lhs, rhs).into_anyexpr(), Source::Inline))
+                    Ok(Bool::Or(lhs, rhs).into_anyexpr())
                 }
                 _ => unreachable!("no such binary operator"),
             },
             ast::Expr::IfElse(inner) => {
                 let cond = self.bool_expr(&inner.cond)?;
-                let (if_true, _) = self.any_expr(&inner.if_true)?;
-                let (if_false, _) = self.any_expr(&inner.if_false)?;
+                let if_true = self.any_expr(&inner.if_true)?;
+                let if_false = self.any_expr(&inner.if_false)?;
                 match (if_true, if_false) {
-                    (AnyExpr::Bool(if_true), AnyExpr::Bool(if_false)) => Ok((AnyExpr::Bool(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
-                    (AnyExpr::Color(if_true), AnyExpr::Color(if_false)) => Ok((AnyExpr::Color(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
-                    (AnyExpr::Float(if_true), AnyExpr::Float(if_false)) => Ok((AnyExpr::Float(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false}))), Source::Inline)),
+                    (AnyExpr::Bool(if_true), AnyExpr::Bool(if_false)) => Ok(AnyExpr::Bool(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false})))),
+                    (AnyExpr::Color(if_true), AnyExpr::Color(if_false)) => Ok(AnyExpr::Color(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false})))),
+                    (AnyExpr::Float(if_true), AnyExpr::Float(if_false)) => Ok(AnyExpr::Float(Expr::IfThenElse(Box::new(IfThenElse{cond, if_true, if_false})))),
                     (if_true, if_false) => {
                         Err(format!("expression at {}:{} ({}) has a different type from expression at {}:{} ({})", inner.if_false.line, inner.if_false.col, if_false.get_type()
 , inner.if_true.line, inner.if_true.col, if_true.get_type()))
@@ -534,29 +529,26 @@ impl<'a> SymTable<'a> {
     }
 
     fn bool_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Bool>, String> {
-        let (def, source) = self.any_expr(value)?;
-        match def {
+        match self.any_expr(value)? {
             AnyExpr::Bool(expr) => Ok(expr),
-            AnyExpr::Float(_) => Err(source.error("expected bool got float")),
-            AnyExpr::Color(_) => Err(source.error("expected bool got color")),
+            AnyExpr::Float(expr) => Err(expr.error("expected bool got float")),
+            AnyExpr::Color(expr) => Err(expr.error("expected bool got color")),
         }
     }
 
     fn color_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Color>, String> {
-        let (def, source) = self.any_expr(value)?;
-        match def {
+        match self.any_expr(value)? {
             AnyExpr::Color(expr) => Ok(expr),
-            AnyExpr::Bool(_) => Err(source.error("expected color got bool")),
-            AnyExpr::Float(_) => Err(source.error("expected color got float")),
+            AnyExpr::Bool(expr) => Err(expr.error("expected color got bool")),
+            AnyExpr::Float(expr) => Err(expr.error("expected color got float")),
         }
     }
 
     fn float_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Float>, String> {
-        let (def, source) = self.any_expr(value)?;
-        match def {
+        match self.any_expr(value)? {
             AnyExpr::Float(expr) => Ok(expr),
-            AnyExpr::Bool(_) => Err(source.error("expected float got bool")),
-            AnyExpr::Color(_) => Err(source.error("expected float got color")),
+            AnyExpr::Bool(expr) => Err(expr.error("expected float got bool")),
+            AnyExpr::Color(expr) => Err(expr.error("expected float got color")),
         }
     }
 }
