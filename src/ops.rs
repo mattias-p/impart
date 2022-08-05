@@ -2,10 +2,10 @@ use std::fmt;
 
 use palette::Srgb;
 
+use crate::expr::Expr;
+use crate::expr::Type;
 use crate::generate::Cell;
 use crate::generate::VarId;
-use crate::ir::Expr;
-use crate::ir::Type;
 
 pub enum TyKind {
     Bool,

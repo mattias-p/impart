@@ -1,7 +1,7 @@
 use palette::Pixel;
 
+use crate::expr::Expr;
 use crate::generate::Field;
-use crate::ir::Expr;
 use crate::ops::Color;
 
 pub struct Renderer {

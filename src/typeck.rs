@@ -4,12 +4,11 @@ use std::rc::Rc;
 use palette::rgb::channels::Argb;
 use palette::Srgb;
 
-use crate::ast;
+use crate::expr::Def;
+use crate::expr::Expr;
+use crate::expr::IfThenElse;
 use crate::generate::VarId;
 use crate::generate::VarSpec;
-use crate::ir::Def;
-use crate::ir::Expr;
-use crate::ir::IfThenElse;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 use crate::lexer::Var;
@@ -30,13 +29,14 @@ use crate::ops::Or;
 use crate::ops::Sub;
 use crate::ops::UnaryOp;
 use crate::ops::Xor;
+use crate::parser;
 
-pub fn float_literal(literal: &Loc<ast::Literal>) -> Result<f32, String> {
+pub fn float_literal(literal: &Loc<parser::Literal>) -> Result<f32, String> {
     match literal.inner {
-        ast::Literal::Decimal(s) => Ok(s.parse::<f32>().unwrap()),
-        ast::Literal::True => Err(literal.error("expected number got bool")),
-        ast::Literal::False => Err(literal.error("expected number got bool")),
-        ast::Literal::Hexcode(_) => Err(literal.error("expected number got color")),
+        parser::Literal::Decimal(s) => Ok(s.parse::<f32>().unwrap()),
+        parser::Literal::True => Err(literal.error("expected number got bool")),
+        parser::Literal::False => Err(literal.error("expected number got bool")),
+        parser::Literal::Hexcode(_) => Err(literal.error("expected number got color")),
     }
 }
 
@@ -110,25 +110,25 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    pub fn any_expr(&self, expr: &'a Loc<ast::Expr<'a>>) -> Result<AnyExpr, String> {
+    pub fn any_expr(&self, expr: &'a Loc<parser::Expr<'a>>) -> Result<AnyExpr, String> {
         match &expr.inner {
-            ast::Expr::True => Ok(AnyExpr::Bool(Expr::Imm(true))),
-            ast::Expr::False => Ok(AnyExpr::Bool(Expr::Imm(false))),
-            ast::Expr::Float(s) => {
+            parser::Expr::True => Ok(AnyExpr::Bool(Expr::Imm(true))),
+            parser::Expr::False => Ok(AnyExpr::Bool(Expr::Imm(false))),
+            parser::Expr::Float(s) => {
                 let decoded = s.parse::<f32>().unwrap();
                 Ok(AnyExpr::Float(Expr::Imm(decoded)))
             }
-            ast::Expr::Hexcode(s) => {
+            parser::Expr::Hexcode(s) => {
                 let argb = u32::from_str_radix(s, 16).unwrap();
                 Ok(AnyExpr::Color(Expr::Imm(Srgb::<u8>::from_u32::<Argb>(
                     argb,
                 ))))
             }
-            ast::Expr::Ident(s) => match self.symbol(s) {
+            parser::Expr::Ident(s) => match self.symbol(s) {
                 Some(def) => Ok(def.inner.clone()),
                 None => Err(expr.error("use of undeclared identifier")),
             },
-            ast::Expr::Constructor(inner) => match inner.kind {
+            parser::Expr::Constructor(inner) => match inner.kind {
                 Var::Perlin => {
                     let mut octaves = None;
                     let mut frequency = None;
@@ -200,11 +200,11 @@ impl<'a> SymTable<'a> {
                     Ok(Float::Variable(variable).into())
                 }
             },
-            ast::Expr::LetIn(inner) => {
+            parser::Expr::LetIn(inner) => {
                 let def = self.any_expr(&inner.definition)?;
                 self.with_def(inner.term, def).any_expr(&inner.expr)
             }
-            ast::Expr::UnOp(inner) => match inner.op {
+            parser::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
                     Ok(Not::new(rhs).into())
@@ -215,7 +215,7 @@ impl<'a> SymTable<'a> {
                 }
                 _ => unreachable!("no such unary operator"),
             },
-            ast::Expr::BinOp(inner) => match inner.op {
+            parser::Expr::BinOp(inner) => match inner.op {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
@@ -263,7 +263,7 @@ impl<'a> SymTable<'a> {
                 }
                 _ => unreachable!("no such binary operator"),
             },
-            ast::Expr::IfElse(inner) => {
+            parser::Expr::IfElse(inner) => {
                 let cond = self.bool_expr(&inner.cond)?;
                 let if_true = self.any_expr(&inner.if_true)?;
                 let if_false = self.any_expr(&inner.if_false)?;
@@ -280,7 +280,7 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    fn bool_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Bool>, String> {
+    fn bool_expr(&self, value: &'a Loc<parser::Expr<'a>>) -> Result<Expr<Bool>, String> {
         match self.any_expr(value)? {
             AnyExpr::Bool(expr) => Ok(expr),
             AnyExpr::Float(expr) => Err(expr.error("expected bool got float")),
@@ -288,7 +288,7 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    fn color_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Color>, String> {
+    fn color_expr(&self, value: &'a Loc<parser::Expr<'a>>) -> Result<Expr<Color>, String> {
         match self.any_expr(value)? {
             AnyExpr::Color(expr) => Ok(expr),
             AnyExpr::Bool(expr) => Err(expr.error("expected color got bool")),
@@ -296,7 +296,7 @@ impl<'a> SymTable<'a> {
         }
     }
 
-    fn float_expr(&self, value: &'a Loc<ast::Expr<'a>>) -> Result<Expr<Float>, String> {
+    fn float_expr(&self, value: &'a Loc<parser::Expr<'a>>) -> Result<Expr<Float>, String> {
         match self.any_expr(value)? {
             AnyExpr::Float(expr) => Ok(expr),
             AnyExpr::Bool(expr) => Err(expr.error("expected float got bool")),
@@ -306,7 +306,7 @@ impl<'a> SymTable<'a> {
 }
 
 pub fn parse_source(source: &[u8]) -> Result<(Expr<Color>, Vec<VarSpec>), String> {
-    let tree = ast::parse_source(source)?;
+    let tree = parser::parse_source(source)?;
     let symtable = SymTable::new();
     let expr = symtable.color_expr(&tree)?;
     let vars = symtable.get_vars();

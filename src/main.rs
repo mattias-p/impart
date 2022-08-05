@@ -1,8 +1,8 @@
-mod ast;
+mod expr;
 mod generate;
-mod ir;
 mod lexer;
 mod ops;
+mod parser;
 mod render;
 mod stats;
 mod typeck;
