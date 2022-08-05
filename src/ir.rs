@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::fmt;
-use std::ops;
 use std::rc::Rc;
 
 use palette::Srgb;
@@ -75,13 +74,15 @@ pub trait UnaryOp {
     type Rhs: Type;
     type Output: Type;
 
-    fn eval(rhs: <Self::Rhs as Type>::Repr) -> <Self::Output as Type>::Repr;
-    fn wrap(rhs: Expr<Self::Rhs>) -> Self::Output;
-    fn rhs(&self) -> &Expr<Self::Rhs>;
+    fn eval_raw(rhs: <Self::Rhs as Type>::Repr) -> <Self::Output as Type>::Repr;
+    fn new(rhs: Expr<Self::Rhs>) -> Self::Output;
+    fn operand(&self) -> &Expr<Self::Rhs>;
     fn into_rhs(self) -> Expr<Self::Rhs>;
 
     fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
-        Self::eval(self.rhs().eval(cell))
+        let rhs = self.operand();
+        let rhs = rhs.eval(cell);
+        Self::eval_raw(rhs)
     }
 
     fn eval_static(self) -> Expr<Self::Output>
@@ -90,9 +91,44 @@ pub trait UnaryOp {
     {
         let rhs = self.into_rhs().eval_static();
         if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(Self::eval(rhs))
+            Expr::Imm(Self::eval_raw(rhs))
         } else {
-            Expr::TypeOp(Box::new(Self::wrap(rhs)))
+            Expr::TypeOp(Box::new(Self::new(rhs)))
+        }
+    }
+}
+
+pub trait BinaryOp {
+    type Lhs: Type;
+    type Rhs: Type;
+    type Output: Type;
+
+    fn eval_raw(
+        lhs: <Self::Lhs as Type>::Repr,
+        rhs: <Self::Rhs as Type>::Repr,
+    ) -> <Self::Output as Type>::Repr;
+    fn new(lhs: Expr<Self::Lhs>, rhs: Expr<Self::Rhs>) -> Self::Output;
+    fn operands(&self) -> (&Expr<Self::Lhs>, &Expr<Self::Rhs>);
+    fn into_operands(self) -> (Expr<Self::Lhs>, Expr<Self::Rhs>);
+
+    fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
+        let (lhs, rhs) = self.operands();
+        let lhs = lhs.eval(cell);
+        let rhs = rhs.eval(cell);
+        Self::eval_raw(lhs, rhs)
+    }
+
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let (lhs, rhs) = self.into_operands();
+        let lhs = lhs.eval_static();
+        let rhs = rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(Self::eval_raw(lhs, rhs))
+        } else {
+            Expr::TypeOp(Box::new(Self::new(lhs, rhs)))
         }
     }
 }
@@ -105,13 +141,13 @@ pub struct Not {
 impl UnaryOp for Not {
     type Rhs = Bool;
     type Output = Bool;
-    fn eval(rhs: bool) -> bool {
+    fn eval_raw(rhs: bool) -> bool {
         !rhs
     }
-    fn wrap(rhs: Expr<Bool>) -> Bool {
+    fn new(rhs: Expr<Bool>) -> Bool {
         Bool::Not(Self { rhs })
     }
-    fn rhs(&self) -> &Expr<Bool> {
+    fn operand(&self) -> &Expr<Bool> {
         &self.rhs
     }
     fn into_rhs(self) -> Expr<Bool> {
@@ -127,13 +163,13 @@ pub struct Neg {
 impl UnaryOp for Neg {
     type Rhs = Float;
     type Output = Float;
-    fn eval(rhs: f32) -> f32 {
+    fn eval_raw(rhs: f32) -> f32 {
         -rhs
     }
-    fn wrap(rhs: Expr<Float>) -> Float {
+    fn new(rhs: Expr<Float>) -> Float {
         Float::Neg(Self { rhs })
     }
-    fn rhs(&self) -> &Expr<Float> {
+    fn operand(&self) -> &Expr<Float> {
         &self.rhs
     }
     fn into_rhs(self) -> Expr<Float> {
@@ -142,36 +178,250 @@ impl UnaryOp for Neg {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct And {
+    lhs: Expr<Bool>,
+    rhs: Expr<Bool>,
+}
+
+impl BinaryOp for And {
+    type Lhs = Bool;
+    type Rhs = Bool;
+    type Output = Bool;
+    fn eval_raw(lhs: bool, rhs: bool) -> bool {
+        lhs && rhs
+    }
+    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::And(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Xor {
+    lhs: Expr<Bool>,
+    rhs: Expr<Bool>,
+}
+
+impl BinaryOp for Xor {
+    type Lhs = Bool;
+    type Rhs = Bool;
+    type Output = Bool;
+    fn eval_raw(lhs: bool, rhs: bool) -> bool {
+        lhs ^ rhs
+    }
+    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::Xor(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Or {
+    lhs: Expr<Bool>,
+    rhs: Expr<Bool>,
+}
+
+impl BinaryOp for Or {
+    type Lhs = Bool;
+    type Rhs = Bool;
+    type Output = Bool;
+    fn eval_raw(lhs: bool, rhs: bool) -> bool {
+        lhs || rhs
+    }
+    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::Or(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Greater {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Greater {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Bool;
+    fn eval_raw(lhs: f32, rhs: f32) -> bool {
+        lhs > rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
+        Bool::Greater(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Less {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Less {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Bool;
+    fn eval_raw(lhs: f32, rhs: f32) -> bool {
+        lhs < rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
+        Bool::Less(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mul {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Mul {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Float;
+    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
+        lhs * rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Mul(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Div {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Div {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Float;
+    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
+        lhs / rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Div(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Add {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Add {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Float;
+    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
+        lhs + rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Add(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sub {
+    lhs: Expr<Float>,
+    rhs: Expr<Float>,
+}
+
+impl BinaryOp for Sub {
+    type Lhs = Float;
+    type Rhs = Float;
+    type Output = Float;
+    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
+        lhs - rhs
+    }
+    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Sub(Self { lhs, rhs })
+    }
+    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
+        (&self.lhs, &self.rhs)
+    }
+    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
+        (self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Bool {
     Not(Not),
-    And(Expr<Bool>, Expr<Bool>),
-    Xor(Expr<Bool>, Expr<Bool>),
-    Or(Expr<Bool>, Expr<Bool>),
-    Greater(Expr<Float>, Expr<Float>),
-    Less(Expr<Float>, Expr<Float>),
+    And(And),
+    Xor(Xor),
+    Or(Or),
+    Greater(Greater),
+    Less(Less),
 }
 impl Type for Bool {
     type Repr = bool;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            Bool::Not(not) => not.eval_cell(cell),
-            Bool::And(lhs, rhs) => lhs.eval(cell) && rhs.eval(cell),
-            Bool::Xor(lhs, rhs) => lhs.eval(cell) ^ rhs.eval(cell),
-            Bool::Or(lhs, rhs) => lhs.eval(cell) || rhs.eval(cell),
-            Bool::Greater(lhs, rhs) => lhs.eval(cell) > rhs.eval(cell),
-            Bool::Less(lhs, rhs) => lhs.eval(cell) < rhs.eval(cell),
+            Bool::Not(op) => op.eval_cell(cell),
+            Bool::And(op) => op.eval_cell(cell),
+            Bool::Xor(op) => op.eval_cell(cell),
+            Bool::Or(op) => op.eval_cell(cell),
+            Bool::Greater(op) => op.eval_cell(cell),
+            Bool::Less(op) => op.eval_cell(cell),
         }
     }
     fn eval_static(self) -> Expr<Self> {
         match self {
-            Bool::Not(not) => not.eval_static(),
-            Bool::And(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitAnd::bitand, Bool::And),
-            Bool::Xor(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitXor::bitxor, Bool::Xor),
-            Bool::Or(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitOr::bitor, Bool::Or),
-            Bool::Greater(lhs, rhs) => {
-                Self::reduce_binary(lhs, rhs, |lhs, rhs| lhs > rhs, Bool::Greater)
-            }
-            Bool::Less(lhs, rhs) => Self::reduce_binary(lhs, rhs, |lhs, rhs| lhs < rhs, Bool::Less),
+            Bool::Not(op) => op.eval_static(),
+            Bool::And(op) => op.eval_static(),
+            Bool::Xor(op) => op.eval_static(),
+            Bool::Or(op) => op.eval_static(),
+            Bool::Greater(op) => op.eval_static(),
+            Bool::Less(op) => op.eval_static(),
         }
     }
 }
@@ -197,31 +447,31 @@ impl Type for Color {
 pub enum Float {
     Variable(VarId),
     Neg(Neg),
-    Mul(Expr<Float>, Expr<Float>),
-    Div(Expr<Float>, Expr<Float>),
-    Add(Expr<Float>, Expr<Float>),
-    Sub(Expr<Float>, Expr<Float>),
+    Mul(Mul),
+    Div(Div),
+    Add(Add),
+    Sub(Sub),
 }
 impl Type for Float {
     type Repr = f32;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             Float::Variable(var) => cell.get(*var),
-            Float::Neg(neg) => neg.eval_cell(cell),
-            Float::Mul(lhs, rhs) => lhs.eval(cell) * rhs.eval(cell),
-            Float::Div(lhs, rhs) => lhs.eval(cell) / rhs.eval(cell),
-            Float::Add(lhs, rhs) => lhs.eval(cell) + rhs.eval(cell),
-            Float::Sub(lhs, rhs) => lhs.eval(cell) - rhs.eval(cell),
+            Float::Neg(op) => op.eval_cell(cell),
+            Float::Mul(op) => op.eval_cell(cell),
+            Float::Div(op) => op.eval_cell(cell),
+            Float::Add(op) => op.eval_cell(cell),
+            Float::Sub(op) => op.eval_cell(cell),
         }
     }
     fn eval_static(self) -> Expr<Self> {
         match self {
             Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
-            Float::Neg(neg) => neg.eval_static(),
-            Float::Mul(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Mul::mul, Float::Mul),
-            Float::Div(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Div::div, Float::Div),
-            Float::Add(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Add::add, Float::Add),
-            Float::Sub(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Sub::sub, Float::Sub),
+            Float::Neg(op) => op.eval_static(),
+            Float::Mul(op) => op.eval_static(),
+            Float::Div(op) => op.eval_static(),
+            Float::Add(op) => op.eval_static(),
+            Float::Sub(op) => op.eval_static(),
         }
     }
 }
