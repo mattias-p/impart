@@ -1,28 +1,11 @@
-use std::cell::RefCell;
 use std::fmt;
+
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::generate::Cell;
 use crate::lexer::Loc;
 use crate::ops::Bool;
-use crate::ops::Color;
-use crate::ops::Float;
-
-pub enum TyKind {
-    Bool,
-    Float,
-    Color,
-}
-
-impl fmt::Display for TyKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TyKind::Bool => write!(f, "bool"),
-            TyKind::Color => write!(f, "color"),
-            TyKind::Float => write!(f, "float"),
-        }
-    }
-}
 
 pub trait Type
 where
@@ -67,35 +50,6 @@ where
         } else {
             Expr::TypeOp(Box::new(op_deferred(lhs, rhs)))
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum AnyExpr {
-    Bool(Expr<Bool>),
-    Color(Expr<Color>),
-    Float(Expr<Float>),
-}
-
-impl AnyExpr {
-    pub fn get_type(&self) -> TyKind {
-        match self {
-            AnyExpr::Bool(_) => TyKind::Bool,
-            AnyExpr::Color(_) => TyKind::Color,
-            AnyExpr::Float(_) => TyKind::Float,
-        }
-    }
-}
-
-impl From<Float> for AnyExpr {
-    fn from(op: Float) -> Self {
-        AnyExpr::Float(Expr::TypeOp(Box::new(op)))
-    }
-}
-
-impl From<Bool> for AnyExpr {
-    fn from(op: Bool) -> Self {
-        AnyExpr::Bool(Expr::TypeOp(Box::new(op)))
     }
 }
 

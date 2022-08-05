@@ -1,10 +1,27 @@
+use std::fmt;
+
 use palette::Srgb;
 
 use crate::generate::Cell;
 use crate::generate::VarId;
-
 use crate::ir::Expr;
 use crate::ir::Type;
+
+pub enum TyKind {
+    Bool,
+    Float,
+    Color,
+}
+
+impl fmt::Display for TyKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TyKind::Bool => write!(f, "bool"),
+            TyKind::Color => write!(f, "color"),
+            TyKind::Float => write!(f, "float"),
+        }
+    }
+}
 
 pub trait UnaryOp {
     type Rhs: Type;
@@ -404,5 +421,34 @@ impl Type for Float {
             Float::Add(op) => op.eval_static(),
             Float::Sub(op) => op.eval_static(),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AnyExpr {
+    Bool(Expr<Bool>),
+    Color(Expr<Color>),
+    Float(Expr<Float>),
+}
+
+impl AnyExpr {
+    pub fn get_type(&self) -> TyKind {
+        match self {
+            AnyExpr::Bool(_) => TyKind::Bool,
+            AnyExpr::Color(_) => TyKind::Color,
+            AnyExpr::Float(_) => TyKind::Float,
+        }
+    }
+}
+
+impl From<Float> for AnyExpr {
+    fn from(op: Float) -> Self {
+        AnyExpr::Float(Expr::TypeOp(Box::new(op)))
+    }
+}
+
+impl From<Bool> for AnyExpr {
+    fn from(op: Bool) -> Self {
+        AnyExpr::Bool(Expr::TypeOp(Box::new(op)))
     }
 }
