@@ -4,6 +4,7 @@ mod ir;
 mod lexer;
 mod render;
 mod stats;
+mod typeck;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -74,7 +75,7 @@ fn main() -> anyhow::Result<()> {
     let file = File::create(&cli.outfile).context("Failed to open out file")?;
     let w = &mut BufWriter::new(file);
 
-    let (prog, var_specs) = ir::parse_source(source)
+    let (prog, var_specs) = typeck::parse_source(source)
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
     let prog = prog.eval_static();
