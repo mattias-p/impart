@@ -34,7 +34,7 @@ pub trait UnaryOp {
 
     fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
         let rhs = self.operand();
-        let rhs = rhs.eval(cell);
+        let rhs = rhs.eval_cell(cell);
         Self::eval_raw(rhs)
     }
 
@@ -66,8 +66,8 @@ pub trait BinaryOp {
 
     fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
         let (lhs, rhs) = self.operands();
-        let lhs = lhs.eval(cell);
-        let rhs = rhs.eval(cell);
+        let lhs = lhs.eval_cell(cell);
+        let rhs = rhs.eval_cell(cell);
         Self::eval_raw(lhs, rhs)
     }
 
@@ -358,7 +358,7 @@ pub enum Bool {
 impl Type for Bool {
     type Repr = bool;
     type Cond = Self;
-    fn eval(&self, cell: &Cell) -> Self::Repr {
+    fn eval_cell(&self, cell: &Cell) -> Self::Repr {
         match self {
             Bool::Not(op) => op.eval_cell(cell),
             Bool::And(op) => op.eval_cell(cell),
@@ -385,7 +385,7 @@ pub enum Color {}
 impl Type for Color {
     type Repr = Srgb<u8>;
     type Cond = Bool;
-    fn eval(&self, _cell: &Cell) -> Self::Repr {
+    fn eval_cell(&self, _cell: &Cell) -> Self::Repr {
         unreachable!("Color does not have any operators");
     }
     fn eval_static(self) -> Expr<Self> {
@@ -405,7 +405,7 @@ pub enum Float {
 impl Type for Float {
     type Repr = f32;
     type Cond = Bool;
-    fn eval(&self, cell: &Cell) -> Self::Repr {
+    fn eval_cell(&self, cell: &Cell) -> Self::Repr {
         match self {
             Float::Variable(var) => cell.get(*var),
             Float::Neg(op) => op.eval_cell(cell),

@@ -17,7 +17,7 @@ impl Renderer {
         let mut image: Vec<u8> = Vec::with_capacity(field.size() * 3);
 
         for cell in field.cells() {
-            let color = self.expr.eval(&cell);
+            let color = self.expr.eval_cell(&cell);
             image.extend(color.into_raw::<[u8; 3]>().into_iter());
         }
 

@@ -12,7 +12,7 @@ where
 {
     type Repr: Clone + Copy + fmt::Debug + Default + PartialEq;
     type Cond: Type<Repr = bool, Cond = Self::Cond>;
-    fn eval(&self, cell: &Cell) -> Self::Repr;
+    fn eval_cell(&self, cell: &Cell) -> Self::Repr;
     fn eval_static(self) -> Expr<Self>
     where
         Self: Sized + Clone;
@@ -67,8 +67,8 @@ where
     Output: Type + Clone,
     <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
 {
-    pub fn eval(&self, cell: &Cell) -> Output::Repr {
-        self.inner.inner.borrow().eval(cell)
+    pub fn eval_cell(&self, cell: &Cell) -> Output::Repr {
+        self.inner.inner.borrow().eval_cell(cell)
     }
     pub fn eval_static(&self) {
         let tmp = RefCell::new(Expr::Imm(Default::default()));
@@ -103,12 +103,12 @@ where
         }
     }
 
-    pub fn eval(&self, cell: &Cell) -> Output::Repr {
+    pub fn eval_cell(&self, cell: &Cell) -> Output::Repr {
         match self {
             Expr::Imm(value) => *value,
             Expr::IfThenElse(if_then_else) => if_then_else.eval_cell(cell),
-            Expr::TypeOp(op) => op.eval(cell),
-            Expr::Ref(def) => def.eval(cell),
+            Expr::TypeOp(op) => op.eval_cell(cell),
+            Expr::Ref(def) => def.eval_cell(cell),
         }
     }
 
@@ -157,10 +157,10 @@ where
     <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
 {
     pub fn eval_cell(&self, cell: &Cell) -> <Output as Type>::Repr {
-        if self.cond.eval(cell) {
-            self.if_true.eval(cell)
+        if self.cond.eval_cell(cell) {
+            self.if_true.eval_cell(cell)
         } else {
-            self.if_false.eval(cell)
+            self.if_false.eval_cell(cell)
         }
     }
     pub fn eval_static(self) -> Expr<Output> {
