@@ -1,14 +1,15 @@
 use palette::Pixel;
 
 use crate::generate::Field;
-use crate::ir;
+use crate::ir::Expr;
+use crate::ops::Color;
 
 pub struct Renderer {
-    expr: ir::Expr<ir::Color>,
+    expr: Expr<Color>,
 }
 
 impl Renderer {
-    pub fn new(expr: ir::Expr<ir::Color>) -> Self {
+    pub fn new(expr: Expr<Color>) -> Self {
         Renderer { expr }
     }
 

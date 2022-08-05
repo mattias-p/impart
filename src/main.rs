@@ -2,6 +2,7 @@ mod ast;
 mod generate;
 mod ir;
 mod lexer;
+mod ops;
 mod render;
 mod stats;
 mod typeck;

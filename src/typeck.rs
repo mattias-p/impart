@@ -7,29 +7,29 @@ use palette::Srgb;
 use crate::ast;
 use crate::generate::VarId;
 use crate::generate::VarSpec;
-use crate::ir::Add;
-use crate::ir::And;
 use crate::ir::AnyExpr;
-use crate::ir::BinaryOp;
-use crate::ir::Bool;
-use crate::ir::Color;
 use crate::ir::Def;
-use crate::ir::Div;
 use crate::ir::Expr;
-use crate::ir::Float;
-use crate::ir::Greater;
 use crate::ir::IfThenElse;
-use crate::ir::Less;
-use crate::ir::Mul;
-use crate::ir::Neg;
-use crate::ir::Not;
-use crate::ir::Or;
-use crate::ir::Sub;
-use crate::ir::UnaryOp;
-use crate::ir::Xor;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 use crate::lexer::Var;
+use crate::ops::Add;
+use crate::ops::And;
+use crate::ops::BinaryOp;
+use crate::ops::Bool;
+use crate::ops::Color;
+use crate::ops::Div;
+use crate::ops::Float;
+use crate::ops::Greater;
+use crate::ops::Less;
+use crate::ops::Mul;
+use crate::ops::Neg;
+use crate::ops::Not;
+use crate::ops::Or;
+use crate::ops::Sub;
+use crate::ops::UnaryOp;
+use crate::ops::Xor;
 
 pub fn float_literal(literal: &Loc<ast::Literal>) -> Result<f32, String> {
     match literal.inner {
@@ -179,7 +179,7 @@ impl<'a> SymTable<'a> {
                         persistence,
                     });
 
-                    Ok(Float::Variable(variable).into_anyexpr())
+                    Ok(Float::Variable(variable).into())
                 }
                 Var::X => {
                     if let Some(attr) = inner.attrs.first() {
@@ -188,7 +188,7 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::X);
-                    Ok(Float::Variable(variable).into_anyexpr())
+                    Ok(Float::Variable(variable).into())
                 }
                 Var::Y => {
                     if let Some(attr) = inner.attrs.first() {
@@ -197,7 +197,7 @@ impl<'a> SymTable<'a> {
                             .error(format!("expected no attributes got {:?}", attr.name.inner)))?;
                     }
                     let variable = self.new_variable(VarSpec::Y);
-                    Ok(Float::Variable(variable).into_anyexpr())
+                    Ok(Float::Variable(variable).into())
                 }
             },
             ast::Expr::LetIn(inner) => {
@@ -207,11 +207,11 @@ impl<'a> SymTable<'a> {
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok(Not::new(rhs).into_anyexpr())
+                    Ok(Not::new(rhs).into())
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Neg::new(rhs).into_anyexpr())
+                    Ok(Neg::new(rhs).into())
                 }
                 _ => unreachable!("no such unary operator"),
             },
@@ -219,47 +219,47 @@ impl<'a> SymTable<'a> {
                 Op::Asterisk => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Mul::new(lhs, rhs).into_anyexpr())
+                    Ok(Mul::new(lhs, rhs).into())
                 }
                 Op::Solidus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Div::new(lhs, rhs).into_anyexpr())
+                    Ok(Div::new(lhs, rhs).into())
                 }
                 Op::Plus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Add::new(lhs, rhs).into_anyexpr())
+                    Ok(Add::new(lhs, rhs).into())
                 }
                 Op::Minus => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Sub::new(lhs, rhs).into_anyexpr())
+                    Ok(Sub::new(lhs, rhs).into())
                 }
                 Op::Less => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Less::new(lhs, rhs).into_anyexpr())
+                    Ok(Less::new(lhs, rhs).into())
                 }
                 Op::Greater => {
                     let lhs = self.float_expr(&inner.lhs)?;
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Greater::new(lhs, rhs).into_anyexpr())
+                    Ok(Greater::new(lhs, rhs).into())
                 }
                 Op::And => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok(And::new(lhs, rhs).into_anyexpr())
+                    Ok(And::new(lhs, rhs).into())
                 }
                 Op::Xor => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok(Xor::new(lhs, rhs).into_anyexpr())
+                    Ok(Xor::new(lhs, rhs).into())
                 }
                 Op::Or => {
                     let lhs = self.bool_expr(&inner.lhs)?;
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok(Or::new(lhs, rhs).into_anyexpr())
+                    Ok(Or::new(lhs, rhs).into())
                 }
                 _ => unreachable!("no such binary operator"),
             },
