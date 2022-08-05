@@ -357,6 +357,7 @@ pub enum Bool {
 }
 impl Type for Bool {
     type Repr = bool;
+    type Cond = Self;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             Bool::Not(op) => op.eval_cell(cell),
@@ -383,6 +384,7 @@ impl Type for Bool {
 pub enum Color {}
 impl Type for Color {
     type Repr = Srgb<u8>;
+    type Cond = Bool;
     fn eval(&self, _cell: &Cell) -> Self::Repr {
         unreachable!("Color does not have any operators");
     }
@@ -402,6 +404,7 @@ pub enum Float {
 }
 impl Type for Float {
     type Repr = f32;
+    type Cond = Bool;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             Float::Variable(var) => cell.get(*var),
@@ -450,33 +453,5 @@ impl From<Float> for AnyExpr {
 impl From<Bool> for AnyExpr {
     fn from(op: Bool) -> Self {
         AnyExpr::Bool(Expr::TypeOp(Box::new(op)))
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IfThenElse<T: Type + Clone> {
-    pub cond: Expr<Bool>,
-    pub if_true: Expr<T>,
-    pub if_false: Expr<T>,
-}
-
-impl<T: Type + Clone> IfThenElse<T> {
-    pub fn eval_static(self) -> Expr<T> {
-        let cond = self.cond.eval_static();
-        let if_true = self.if_true.eval_static();
-        let if_false = self.if_false.eval_static();
-        if let Some(cond) = cond.as_imm() {
-            if cond {
-                if_true
-            } else {
-                if_false
-            }
-        } else {
-            Expr::IfThenElse(Box::new(IfThenElse {
-                cond,
-                if_true,
-                if_false,
-            }))
-        }
     }
 }

@@ -5,13 +5,13 @@ use std::rc::Rc;
 
 use crate::generate::Cell;
 use crate::lexer::Loc;
-use crate::ops::IfThenElse;
 
 pub trait Type
 where
-    Self: Clone,
+    Self: Clone + fmt::Debug + PartialEq,
 {
     type Repr: Clone + Copy + fmt::Debug + Default + PartialEq;
+    type Cond: Type<Repr = bool, Cond = Self::Cond>;
     fn eval(&self, cell: &Cell) -> Self::Repr;
     fn eval_static(self) -> Expr<Self>
     where
@@ -54,11 +54,20 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Def<T: Type + Clone> {
-    pub inner: Loc<RefCell<Expr<T>>>,
+pub struct Def<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    pub inner: Loc<RefCell<Expr<Output>>>,
 }
-impl<T: Type + Clone> Def<T> {
-    pub fn eval(&self, cell: &Cell) -> T::Repr {
+
+impl<Output> Def<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    pub fn eval(&self, cell: &Cell) -> Output::Repr {
         self.inner.inner.borrow().eval(cell)
     }
     pub fn eval_static(&self) {
@@ -70,15 +79,23 @@ impl<T: Type + Clone> Def<T> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr<T: Type + Clone> {
-    Imm(T::Repr),
-    TypeOp(Box<T>),
-    IfThenElse(Box<IfThenElse<T>>),
-    Ref(Rc<Def<T>>),
+pub enum Expr<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    Imm(Output::Repr),
+    TypeOp(Box<Output>),
+    IfThenElse(Box<IfThenElse<Output>>),
+    Ref(Rc<Def<Output>>),
 }
 
-impl<T: Type + Clone> Expr<T> {
-    pub fn as_imm(&self) -> Option<T::Repr> {
+impl<Output> Expr<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    pub fn as_imm(&self) -> Option<Output::Repr> {
         if let Expr::Imm(value) = self {
             Some(*value)
         } else {
@@ -86,7 +103,7 @@ impl<T: Type + Clone> Expr<T> {
         }
     }
 
-    pub fn eval(&self, cell: &Cell) -> T::Repr {
+    pub fn eval(&self, cell: &Cell) -> Output::Repr {
         match self {
             Expr::Imm(value) => *value,
             Expr::IfThenElse(if_then_else) => {
@@ -125,6 +142,42 @@ impl<T: Type + Clone> Expr<T> {
                 def.inner.line, def.inner.col
             ),
             _ => message.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfThenElse<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    pub cond: Expr<<Output as Type>::Cond>,
+    pub if_true: Expr<Output>,
+    pub if_false: Expr<Output>,
+}
+
+impl<Output> IfThenElse<Output>
+where
+    Output: Type + Clone,
+    <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
+{
+    pub fn eval_static(self) -> Expr<Output> {
+        let cond = self.cond.eval_static();
+        let if_true = self.if_true.eval_static();
+        let if_false = self.if_false.eval_static();
+        if let Some(cond) = cond.as_imm() {
+            if cond {
+                if_true
+            } else {
+                if_false
+            }
+        } else {
+            Expr::IfThenElse(Box::new(IfThenElse {
+                cond,
+                if_true,
+                if_false,
+            }))
         }
     }
 }
