@@ -452,3 +452,31 @@ impl From<Bool> for AnyExpr {
         AnyExpr::Bool(Expr::TypeOp(Box::new(op)))
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfThenElse<T: Type + Clone> {
+    pub cond: Expr<Bool>,
+    pub if_true: Expr<T>,
+    pub if_false: Expr<T>,
+}
+
+impl<T: Type + Clone> IfThenElse<T> {
+    pub fn eval_static(self) -> Expr<T> {
+        let cond = self.cond.eval_static();
+        let if_true = self.if_true.eval_static();
+        let if_false = self.if_false.eval_static();
+        if let Some(cond) = cond.as_imm() {
+            if cond {
+                if_true
+            } else {
+                if_false
+            }
+        } else {
+            Expr::IfThenElse(Box::new(IfThenElse {
+                cond,
+                if_true,
+                if_false,
+            }))
+        }
+    }
+}

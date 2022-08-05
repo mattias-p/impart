@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::generate::Cell;
 use crate::lexer::Loc;
-use crate::ops::Bool;
+use crate::ops::IfThenElse;
 
 pub trait Type
 where
@@ -105,24 +105,7 @@ impl<T: Type + Clone> Expr<T> {
         match self {
             Expr::Imm(_) => self,
             Expr::TypeOp(op) => op.eval_static(),
-            Expr::IfThenElse(if_then_else) => {
-                let cond = if_then_else.cond.eval_static();
-                let if_true = if_then_else.if_true.eval_static();
-                let if_false = if_then_else.if_false.eval_static();
-                if let Some(cond) = cond.as_imm() {
-                    if cond {
-                        if_true
-                    } else {
-                        if_false
-                    }
-                } else {
-                    Expr::IfThenElse(Box::new(IfThenElse {
-                        cond,
-                        if_true,
-                        if_false,
-                    }))
-                }
-            }
+            Expr::IfThenElse(if_then_else) => if_then_else.eval_static(),
             Expr::Ref(ref def) => {
                 def.eval_static();
                 if (*def.inner.inner.borrow()).as_imm().is_some() {
@@ -144,11 +127,4 @@ impl<T: Type + Clone> Expr<T> {
             _ => message.to_string(),
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IfThenElse<T: Type + Clone> {
-    pub cond: Expr<Bool>,
-    pub if_true: Expr<T>,
-    pub if_false: Expr<T>,
 }
