@@ -106,13 +106,7 @@ where
     pub fn eval(&self, cell: &Cell) -> Output::Repr {
         match self {
             Expr::Imm(value) => *value,
-            Expr::IfThenElse(if_then_else) => {
-                if if_then_else.cond.eval(cell) {
-                    if_then_else.if_true.eval(cell)
-                } else {
-                    if_then_else.if_false.eval(cell)
-                }
-            }
+            Expr::IfThenElse(if_then_else) => if_then_else.eval_cell(cell),
             Expr::TypeOp(op) => op.eval(cell),
             Expr::Ref(def) => def.eval(cell),
         }
@@ -162,6 +156,13 @@ where
     Output: Type + Clone,
     <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
 {
+    pub fn eval_cell(&self, cell: &Cell) -> <Output as Type>::Repr {
+        if self.cond.eval(cell) {
+            self.if_true.eval(cell)
+        } else {
+            self.if_false.eval(cell)
+        }
+    }
     pub fn eval_static(self) -> Expr<Output> {
         let cond = self.cond.eval_static();
         let if_true = self.if_true.eval_static();
