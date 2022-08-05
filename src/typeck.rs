@@ -14,11 +14,9 @@ use crate::lexer::Op;
 use crate::lexer::Var;
 use crate::ops;
 use crate::ops::AnyExpr;
-use crate::ops::BinaryOp as _;
 use crate::ops::Bool;
 use crate::ops::Color;
 use crate::ops::Float;
-use crate::ops::UnaryOp as _;
 use crate::parser;
 
 pub fn float_literal(literal: &Loc<parser::Literal>) -> Result<f32, String> {

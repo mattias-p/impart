@@ -23,88 +23,40 @@ impl fmt::Display for TyKind {
     }
 }
 
-pub trait UnaryOp {
-    type Rhs: Type;
+pub trait Operator {
     type Output: Type;
 
-    fn eval_raw(rhs: <Self::Rhs as Type>::Repr) -> <Self::Output as Type>::Repr;
-    fn new(rhs: Expr<Self::Rhs>) -> Self::Output;
-    fn operand(&self) -> &Expr<Self::Rhs>;
-    fn into_rhs(self) -> Expr<Self::Rhs>;
+    fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr;
 
-    fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
-        let rhs = self.operand();
-        let rhs = rhs.eval_cell(cell);
-        Self::eval_raw(rhs)
-    }
-
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let rhs = self.into_rhs().eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(Self::eval_raw(rhs))
-        } else {
-            Expr::TypeOp(Box::new(Self::new(rhs)))
-        }
-    }
-}
-
-pub trait BinaryOp {
-    type Lhs: Type;
-    type Rhs: Type;
-    type Output: Type;
-
-    fn eval_raw(
-        lhs: <Self::Lhs as Type>::Repr,
-        rhs: <Self::Rhs as Type>::Repr,
-    ) -> <Self::Output as Type>::Repr;
-    fn new(lhs: Expr<Self::Lhs>, rhs: Expr<Self::Rhs>) -> Self::Output;
-    fn operands(&self) -> (&Expr<Self::Lhs>, &Expr<Self::Rhs>);
-    fn into_operands(self) -> (Expr<Self::Lhs>, Expr<Self::Rhs>);
-
-    fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
-        let (lhs, rhs) = self.operands();
-        let lhs = lhs.eval_cell(cell);
-        let rhs = rhs.eval_cell(cell);
-        Self::eval_raw(lhs, rhs)
-    }
-
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let (lhs, rhs) = self.into_operands();
-        let lhs = lhs.eval_static();
-        let rhs = rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(Self::eval_raw(lhs, rhs))
-        } else {
-            Expr::TypeOp(Box::new(Self::new(lhs, rhs)))
-        }
-    }
+    fn eval_static(self) -> Expr<Self::Output>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Not {
-    rhs: Expr<Bool>,
+    pub rhs: Expr<Bool>,
 }
 
-impl UnaryOp for Not {
-    type Rhs = Bool;
+impl Operator for Not {
     type Output = Bool;
-    fn eval_raw(rhs: bool) -> bool {
-        !rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        !self.rhs.eval_cell(cell)
     }
-    fn new(rhs: Expr<Bool>) -> Bool {
-        Bool::Not(Self { rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let rhs = self.rhs.eval_static();
+        if let Some(rhs) = rhs.as_imm() {
+            Expr::Imm(!rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::Not(Not { rhs })))
+        }
     }
-    fn operand(&self) -> &Expr<Bool> {
-        &self.rhs
-    }
-    fn into_rhs(self) -> Expr<Bool> {
-        self.rhs
+}
+
+impl Not {
+    pub fn new(rhs: Expr<Bool>) -> Bool {
+        Bool::Not(Not { rhs })
     }
 }
 
@@ -113,20 +65,27 @@ pub struct Neg {
     rhs: Expr<Float>,
 }
 
-impl UnaryOp for Neg {
-    type Rhs = Float;
+impl Operator for Neg {
     type Output = Float;
-    fn eval_raw(rhs: f32) -> f32 {
-        -rhs
+    fn eval_cell(&self, cell: &Cell) -> f32 {
+        -self.rhs.eval_cell(cell)
     }
-    fn new(rhs: Expr<Float>) -> Float {
-        Float::Neg(Self { rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let rhs = self.rhs.eval_static();
+        if let Some(rhs) = rhs.as_imm() {
+            Expr::Imm(-rhs)
+        } else {
+            Expr::TypeOp(Box::new(Float::Neg(Neg { rhs })))
+        }
     }
-    fn operand(&self) -> &Expr<Float> {
-        &self.rhs
-    }
-    fn into_rhs(self) -> Expr<Float> {
-        self.rhs
+}
+
+impl Neg {
+    pub fn new(rhs: Expr<Float>) -> Float {
+        Float::Neg(Neg { rhs })
     }
 }
 
@@ -136,21 +95,28 @@ pub struct And {
     rhs: Expr<Bool>,
 }
 
-impl BinaryOp for And {
-    type Lhs = Bool;
-    type Rhs = Bool;
+impl Operator for And {
     type Output = Bool;
-    fn eval_raw(lhs: bool, rhs: bool) -> bool {
-        lhs && rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        self.lhs.eval_cell(cell) && self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
-        Bool::And(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs && rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::And(And { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
-        (self.lhs, self.rhs)
+}
+
+impl And {
+    pub fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::And(And { lhs, rhs })
     }
 }
 
@@ -160,21 +126,28 @@ pub struct Xor {
     rhs: Expr<Bool>,
 }
 
-impl BinaryOp for Xor {
-    type Lhs = Bool;
-    type Rhs = Bool;
+impl Operator for Xor {
     type Output = Bool;
-    fn eval_raw(lhs: bool, rhs: bool) -> bool {
-        lhs ^ rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        self.lhs.eval_cell(cell) ^ self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
-        Bool::Xor(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs ^ rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::Xor(Xor { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
-        (self.lhs, self.rhs)
+}
+
+impl Xor {
+    pub fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::Xor(Xor { lhs, rhs })
     }
 }
 
@@ -184,21 +157,28 @@ pub struct Or {
     rhs: Expr<Bool>,
 }
 
-impl BinaryOp for Or {
-    type Lhs = Bool;
-    type Rhs = Bool;
+impl Operator for Or {
     type Output = Bool;
-    fn eval_raw(lhs: bool, rhs: bool) -> bool {
-        lhs || rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        self.lhs.eval_cell(cell) ^ self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
-        Bool::Or(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs ^ rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::Or(Or { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Bool>, &Expr<Bool>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Bool>, Expr<Bool>) {
-        (self.lhs, self.rhs)
+}
+
+impl Or {
+    pub fn new(lhs: Expr<Bool>, rhs: Expr<Bool>) -> Bool {
+        Bool::Or(Or { lhs, rhs })
     }
 }
 
@@ -208,21 +188,28 @@ pub struct Greater {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Greater {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Greater {
     type Output = Bool;
-    fn eval_raw(lhs: f32, rhs: f32) -> bool {
-        lhs > rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        self.lhs.eval_cell(cell) > self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
-        Bool::Greater(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs > rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::Greater(Greater { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Greater {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
+        Bool::Greater(Greater { lhs, rhs })
     }
 }
 
@@ -232,21 +219,28 @@ pub struct Less {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Less {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Less {
     type Output = Bool;
-    fn eval_raw(lhs: f32, rhs: f32) -> bool {
-        lhs < rhs
+    fn eval_cell(&self, cell: &Cell) -> bool {
+        self.lhs.eval_cell(cell) < self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
-        Bool::Less(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs < rhs)
+        } else {
+            Expr::TypeOp(Box::new(Bool::Less(Less { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Less {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Bool {
+        Bool::Less(Less { lhs, rhs })
     }
 }
 
@@ -256,21 +250,28 @@ pub struct Mul {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Mul {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Mul {
     type Output = Float;
-    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
-        lhs * rhs
+    fn eval_cell(&self, cell: &Cell) -> f32 {
+        self.lhs.eval_cell(cell) * self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
-        Float::Mul(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs * rhs)
+        } else {
+            Expr::TypeOp(Box::new(Float::Mul(Mul { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Mul {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Mul(Mul { lhs, rhs })
     }
 }
 
@@ -280,21 +281,28 @@ pub struct Div {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Div {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Div {
     type Output = Float;
-    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
-        lhs / rhs
+    fn eval_cell(&self, cell: &Cell) -> f32 {
+        self.lhs.eval_cell(cell) / self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
-        Float::Div(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs / rhs)
+        } else {
+            Expr::TypeOp(Box::new(Float::Div(Div { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Div {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Div(Div { lhs, rhs })
     }
 }
 
@@ -304,21 +312,28 @@ pub struct Add {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Add {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Add {
     type Output = Float;
-    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
-        lhs + rhs
+    fn eval_cell(&self, cell: &Cell) -> f32 {
+        self.lhs.eval_cell(cell) + self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
-        Float::Add(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs + rhs)
+        } else {
+            Expr::TypeOp(Box::new(Float::Add(Add { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Add {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Add(Add { lhs, rhs })
     }
 }
 
@@ -328,21 +343,28 @@ pub struct Sub {
     rhs: Expr<Float>,
 }
 
-impl BinaryOp for Sub {
-    type Lhs = Float;
-    type Rhs = Float;
+impl Operator for Sub {
     type Output = Float;
-    fn eval_raw(lhs: f32, rhs: f32) -> f32 {
-        lhs - rhs
+    fn eval_cell(&self, cell: &Cell) -> f32 {
+        self.lhs.eval_cell(cell) - self.rhs.eval_cell(cell)
     }
-    fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
-        Float::Sub(Self { lhs, rhs })
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let lhs = self.lhs.eval_static();
+        let rhs = self.rhs.eval_static();
+        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+            Expr::Imm(lhs - rhs)
+        } else {
+            Expr::TypeOp(Box::new(Float::Sub(Sub { lhs, rhs })))
+        }
     }
-    fn operands(&self) -> (&Expr<Float>, &Expr<Float>) {
-        (&self.lhs, &self.rhs)
-    }
-    fn into_operands(self) -> (Expr<Float>, Expr<Float>) {
-        (self.lhs, self.rhs)
+}
+
+impl Sub {
+    pub fn new(lhs: Expr<Float>, rhs: Expr<Float>) -> Float {
+        Float::Sub(Sub { lhs, rhs })
     }
 }
 
