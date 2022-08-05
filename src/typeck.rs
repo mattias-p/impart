@@ -14,6 +14,9 @@ use crate::ir::Def;
 use crate::ir::Expr;
 use crate::ir::Float;
 use crate::ir::IfThenElse;
+use crate::ir::Neg;
+use crate::ir::Not;
+use crate::ir::UnaryOp;
 use crate::lexer::Loc;
 use crate::lexer::Op;
 use crate::lexer::Var;
@@ -194,11 +197,11 @@ impl<'a> SymTable<'a> {
             ast::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
                     let rhs = self.bool_expr(&inner.rhs)?;
-                    Ok(Bool::Not(rhs).into_anyexpr())
+                    Ok(Not::wrap(rhs).into_anyexpr())
                 }
                 Op::Minus => {
                     let rhs = self.float_expr(&inner.rhs)?;
-                    Ok(Float::Neg(rhs).into_anyexpr())
+                    Ok(Neg::wrap(rhs).into_anyexpr())
                 }
                 _ => unreachable!("no such unary operator"),
             },

@@ -71,9 +71,79 @@ where
     }
 }
 
+pub trait UnaryOp {
+    type Rhs: Type;
+    type Output: Type;
+
+    fn eval(rhs: <Self::Rhs as Type>::Repr) -> <Self::Output as Type>::Repr;
+    fn wrap(rhs: Expr<Self::Rhs>) -> Self::Output;
+    fn rhs(&self) -> &Expr<Self::Rhs>;
+    fn into_rhs(self) -> Expr<Self::Rhs>;
+
+    fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr {
+        Self::eval(self.rhs().eval(cell))
+    }
+
+    fn eval_static(self) -> Expr<Self::Output>
+    where
+        Self: Sized,
+    {
+        let rhs = self.into_rhs().eval_static();
+        if let Some(rhs) = rhs.as_imm() {
+            Expr::Imm(Self::eval(rhs))
+        } else {
+            Expr::TypeOp(Box::new(Self::wrap(rhs)))
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Not {
+    rhs: Expr<Bool>,
+}
+
+impl UnaryOp for Not {
+    type Rhs = Bool;
+    type Output = Bool;
+    fn eval(rhs: bool) -> bool {
+        !rhs
+    }
+    fn wrap(rhs: Expr<Bool>) -> Bool {
+        Bool::Not(Self { rhs })
+    }
+    fn rhs(&self) -> &Expr<Bool> {
+        &self.rhs
+    }
+    fn into_rhs(self) -> Expr<Bool> {
+        self.rhs
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Neg {
+    rhs: Expr<Float>,
+}
+
+impl UnaryOp for Neg {
+    type Rhs = Float;
+    type Output = Float;
+    fn eval(rhs: f32) -> f32 {
+        -rhs
+    }
+    fn wrap(rhs: Expr<Float>) -> Float {
+        Float::Neg(Self { rhs })
+    }
+    fn rhs(&self) -> &Expr<Float> {
+        &self.rhs
+    }
+    fn into_rhs(self) -> Expr<Float> {
+        self.rhs
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Bool {
-    Not(Expr<Bool>),
+    Not(Not),
     And(Expr<Bool>, Expr<Bool>),
     Xor(Expr<Bool>, Expr<Bool>),
     Or(Expr<Bool>, Expr<Bool>),
@@ -84,7 +154,7 @@ impl Type for Bool {
     type Repr = bool;
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
-            Bool::Not(rhs) => !rhs.eval(cell),
+            Bool::Not(not) => not.eval_cell(cell),
             Bool::And(lhs, rhs) => lhs.eval(cell) && rhs.eval(cell),
             Bool::Xor(lhs, rhs) => lhs.eval(cell) ^ rhs.eval(cell),
             Bool::Or(lhs, rhs) => lhs.eval(cell) || rhs.eval(cell),
@@ -94,7 +164,7 @@ impl Type for Bool {
     }
     fn eval_static(self) -> Expr<Self> {
         match self {
-            Bool::Not(rhs) => Self::reduce_unary(rhs, ops::Not::not, Bool::Not),
+            Bool::Not(not) => not.eval_static(),
             Bool::And(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitAnd::bitand, Bool::And),
             Bool::Xor(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitXor::bitxor, Bool::Xor),
             Bool::Or(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::BitOr::bitor, Bool::Or),
@@ -126,7 +196,7 @@ impl Type for Color {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Float {
     Variable(VarId),
-    Neg(Expr<Float>),
+    Neg(Neg),
     Mul(Expr<Float>, Expr<Float>),
     Div(Expr<Float>, Expr<Float>),
     Add(Expr<Float>, Expr<Float>),
@@ -137,7 +207,7 @@ impl Type for Float {
     fn eval(&self, cell: &Cell) -> Self::Repr {
         match self {
             Float::Variable(var) => cell.get(*var),
-            Float::Neg(rhs) => -rhs.eval(cell),
+            Float::Neg(neg) => neg.eval_cell(cell),
             Float::Mul(lhs, rhs) => lhs.eval(cell) * rhs.eval(cell),
             Float::Div(lhs, rhs) => lhs.eval(cell) / rhs.eval(cell),
             Float::Add(lhs, rhs) => lhs.eval(cell) + rhs.eval(cell),
@@ -147,7 +217,7 @@ impl Type for Float {
     fn eval_static(self) -> Expr<Self> {
         match self {
             Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
-            Float::Neg(rhs) => Self::reduce_unary(rhs, ops::Neg::neg, Float::Neg),
+            Float::Neg(neg) => neg.eval_static(),
             Float::Mul(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Mul::mul, Float::Mul),
             Float::Div(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Div::div, Float::Div),
             Float::Add(lhs, rhs) => Self::reduce_binary(lhs, rhs, ops::Add::add, Float::Add),
