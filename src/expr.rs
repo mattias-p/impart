@@ -16,41 +16,6 @@ where
     fn eval_static(self) -> Expr<Self>
     where
         Self: Sized + Clone;
-
-    fn reduce_unary<R, F, G>(rhs: Expr<R>, op_immediate: F, op_deferred: G) -> Expr<Self>
-    where
-        R: Type,
-        F: Fn(R::Repr) -> Self::Repr,
-        G: Fn(Expr<R>) -> Self,
-    {
-        let rhs = rhs.eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(op_immediate(rhs))
-        } else {
-            Expr::TypeOp(Box::new(op_deferred(rhs)))
-        }
-    }
-
-    fn reduce_binary<L, R, F, G>(
-        lhs: Expr<L>,
-        rhs: Expr<R>,
-        op_immediate: F,
-        op_deferred: G,
-    ) -> Expr<Self>
-    where
-        L: Type,
-        R: Type,
-        F: Fn(L::Repr, R::Repr) -> Self::Repr,
-        G: Fn(Expr<L>, Expr<R>) -> Self,
-    {
-        let lhs = lhs.eval_static();
-        let rhs = rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(op_immediate(lhs, rhs))
-        } else {
-            Expr::TypeOp(Box::new(op_deferred(lhs, rhs)))
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
