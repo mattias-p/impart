@@ -30,12 +30,7 @@ impl StaticEval for Not {
     where
         Self: Sized,
     {
-        let rhs = self.rhs.eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(!rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Not(Not { rhs })))
-        }
+        unary(&self.rhs, std::ops::Not::not, Not::new)
     }
 }
 
@@ -45,12 +40,7 @@ impl StaticEval for Neg {
     where
         Self: Sized,
     {
-        let rhs = self.rhs.eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(-rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Neg(Neg { rhs })))
-        }
+        unary(&self.rhs, std::ops::Neg::neg, Neg::new)
     }
 }
 
@@ -60,13 +50,7 @@ impl StaticEval for And {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs && rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::And(And { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::BitAnd::bitand, And::new)
     }
 }
 
@@ -76,13 +60,7 @@ impl StaticEval for Xor {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs ^ rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Xor(Xor { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::BitXor::bitxor, Xor::new)
     }
 }
 
@@ -92,13 +70,7 @@ impl StaticEval for Or {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs ^ rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Or(Or { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::BitOr::bitor, Or::new)
     }
 }
 
@@ -108,13 +80,7 @@ impl StaticEval for Greater {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs > rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Greater(Greater { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, |lhs, rhs| lhs > rhs, Greater::new)
     }
 }
 
@@ -124,13 +90,7 @@ impl StaticEval for Less {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs < rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Less(Less { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, |lhs, rhs| lhs < rhs, Greater::new)
     }
 }
 
@@ -140,13 +100,7 @@ impl StaticEval for Mul {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs * rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Mul(Mul { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::Mul::mul, Mul::new)
     }
 }
 
@@ -156,13 +110,7 @@ impl StaticEval for Div {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs / rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Div(Div { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::Div::div, Div::new)
     }
 }
 
@@ -172,13 +120,7 @@ impl StaticEval for Add {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs + rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Add(Add { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::Add::add, Add::new)
     }
 }
 
@@ -188,13 +130,7 @@ impl StaticEval for Sub {
     where
         Self: Sized,
     {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs - rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Sub(Sub { lhs, rhs })))
-        }
+        binary(&self.lhs, &self.rhs, std::ops::Sub::sub, Sub::new)
     }
 }
 
@@ -275,5 +211,40 @@ where
                 }
             }
         }
+    }
+}
+
+fn unary<R, O, F, G>(rhs: &Expr<R>, f: F, g: G) -> Expr<O>
+where
+    R: Type + StaticEval<Output = Expr<R>>,
+    O: Type,
+    F: Fn(<R as Type>::Repr) -> <O as Type>::Repr,
+    G: Fn(Expr<R>) -> O,
+    Expr<R>: StaticEval<Output = Expr<R>>,
+{
+    let rhs = rhs.eval_static();
+    if let Some(rhs) = rhs.as_imm() {
+        Expr::Imm(f(rhs))
+    } else {
+        Expr::TypeOp(Box::new(g(rhs)))
+    }
+}
+
+fn binary<L, R, O, F, G>(lhs: &Expr<L>, rhs: &Expr<R>, f: F, g: G) -> Expr<O>
+where
+    L: Type + StaticEval<Output = Expr<L>>,
+    R: Type + StaticEval<Output = Expr<R>>,
+    O: Type,
+    F: Fn(<L as Type>::Repr, <R as Type>::Repr) -> <O as Type>::Repr,
+    G: Fn(Expr<L>, Expr<R>) -> O,
+    Expr<L>: StaticEval<Output = Expr<L>>,
+    Expr<R>: StaticEval<Output = Expr<R>>,
+{
+    let lhs = lhs.eval_static();
+    let rhs = rhs.eval_static();
+    if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
+        Expr::Imm(f(lhs, rhs))
+    } else {
+        Expr::TypeOp(Box::new(g(lhs, rhs)))
     }
 }
