@@ -1,5 +1,6 @@
 mod expr;
 mod generate;
+mod inline;
 mod lexer;
 mod ops;
 mod parser;
@@ -20,6 +21,7 @@ use anyhow::Context;
 use clap::Parser;
 
 use crate::generate::Generator;
+use crate::inline::Inline;
 use crate::render::Renderer;
 use crate::static_eval::StaticEval;
 use crate::stats::Stats;
@@ -82,6 +84,7 @@ fn main() -> anyhow::Result<()> {
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
     let prog = prog.eval_static();
+    let prog = prog.inline();
 
     let generator = Generator::new(var_specs.clone());
     let stats = Stats::new(var_specs);
