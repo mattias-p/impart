@@ -13,9 +13,6 @@ where
     type Repr: Clone + Copy + fmt::Debug + Default + PartialEq;
     type Cond: Type<Repr = bool, Cond = Self::Cond>;
     fn eval_cell(&self, cell: &Cell) -> Self::Repr;
-    fn eval_static(self) -> Expr<Self>
-    where
-        Self: Sized + Clone;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,12 +31,6 @@ where
 {
     pub fn eval_cell(&self, cell: &Cell) -> Output::Repr {
         self.inner.inner.borrow().eval_cell(cell)
-    }
-    pub fn eval_static(&self) {
-        let tmp = RefCell::new(Expr::Imm(Default::default()));
-        self.inner.inner.swap(&tmp);
-        let expr = tmp.into_inner().eval_static();
-        self.inner.inner.replace(expr);
     }
 }
 
@@ -77,22 +68,6 @@ where
         }
     }
 
-    pub fn eval_static(self) -> Self {
-        match self {
-            Expr::Imm(_) => self,
-            Expr::TypeOp(op) => op.eval_static(),
-            Expr::IfThenElse(if_then_else) => if_then_else.eval_static(),
-            Expr::Ref(ref def) => {
-                def.eval_static();
-                if (*def.inner.inner.borrow()).as_imm().is_some() {
-                    def.inner.inner.borrow().clone()
-                } else {
-                    self
-                }
-            }
-        }
-    }
-
     pub fn error<S: AsRef<str>>(&self, message: S) -> String {
         let message = message.as_ref();
         match self {
@@ -126,24 +101,6 @@ where
             self.if_true.eval_cell(cell)
         } else {
             self.if_false.eval_cell(cell)
-        }
-    }
-    pub fn eval_static(self) -> Expr<Output> {
-        let cond = self.cond.eval_static();
-        let if_true = self.if_true.eval_static();
-        let if_false = self.if_false.eval_static();
-        if let Some(cond) = cond.as_imm() {
-            if cond {
-                if_true
-            } else {
-                if_false
-            }
-        } else {
-            Expr::IfThenElse(Box::new(IfThenElse {
-                cond,
-                if_true,
-                if_false,
-            }))
         }
     }
 }

@@ -4,6 +4,7 @@ mod lexer;
 mod ops;
 mod parser;
 mod render;
+mod static_eval;
 mod stats;
 mod typeck;
 
@@ -20,6 +21,7 @@ use clap::Parser;
 
 use crate::generate::Generator;
 use crate::render::Renderer;
+use crate::static_eval::StaticEval;
 use crate::stats::Stats;
 
 #[derive(Parser)]

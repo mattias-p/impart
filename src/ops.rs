@@ -27,8 +27,6 @@ pub trait Operator {
     type Output: Type;
 
     fn eval_cell(&self, cell: &Cell) -> <Self::Output as Type>::Repr;
-
-    fn eval_static(self) -> Expr<Self::Output>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,17 +39,6 @@ impl Operator for Not {
     fn eval_cell(&self, cell: &Cell) -> bool {
         !self.rhs.eval_cell(cell)
     }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let rhs = self.rhs.eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(!rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Not(Not { rhs })))
-        }
-    }
 }
 
 impl Not {
@@ -62,24 +49,13 @@ impl Not {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Neg {
-    rhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Neg {
     type Output = Float;
     fn eval_cell(&self, cell: &Cell) -> f32 {
         -self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let rhs = self.rhs.eval_static();
-        if let Some(rhs) = rhs.as_imm() {
-            Expr::Imm(-rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Neg(Neg { rhs })))
-        }
     }
 }
 
@@ -91,26 +67,14 @@ impl Neg {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct And {
-    lhs: Expr<Bool>,
-    rhs: Expr<Bool>,
+    pub lhs: Expr<Bool>,
+    pub rhs: Expr<Bool>,
 }
 
 impl Operator for And {
     type Output = Bool;
     fn eval_cell(&self, cell: &Cell) -> bool {
         self.lhs.eval_cell(cell) && self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs && rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::And(And { lhs, rhs })))
-        }
     }
 }
 
@@ -122,26 +86,14 @@ impl And {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Xor {
-    lhs: Expr<Bool>,
-    rhs: Expr<Bool>,
+    pub lhs: Expr<Bool>,
+    pub rhs: Expr<Bool>,
 }
 
 impl Operator for Xor {
     type Output = Bool;
     fn eval_cell(&self, cell: &Cell) -> bool {
         self.lhs.eval_cell(cell) ^ self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs ^ rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Xor(Xor { lhs, rhs })))
-        }
     }
 }
 
@@ -153,26 +105,14 @@ impl Xor {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Or {
-    lhs: Expr<Bool>,
-    rhs: Expr<Bool>,
+    pub lhs: Expr<Bool>,
+    pub rhs: Expr<Bool>,
 }
 
 impl Operator for Or {
     type Output = Bool;
     fn eval_cell(&self, cell: &Cell) -> bool {
         self.lhs.eval_cell(cell) ^ self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs ^ rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Or(Or { lhs, rhs })))
-        }
     }
 }
 
@@ -184,26 +124,14 @@ impl Or {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Greater {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Greater {
     type Output = Bool;
     fn eval_cell(&self, cell: &Cell) -> bool {
         self.lhs.eval_cell(cell) > self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs > rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Greater(Greater { lhs, rhs })))
-        }
     }
 }
 
@@ -215,26 +143,14 @@ impl Greater {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Less {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Less {
     type Output = Bool;
     fn eval_cell(&self, cell: &Cell) -> bool {
         self.lhs.eval_cell(cell) < self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs < rhs)
-        } else {
-            Expr::TypeOp(Box::new(Bool::Less(Less { lhs, rhs })))
-        }
     }
 }
 
@@ -246,26 +162,14 @@ impl Less {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Mul {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Mul {
     type Output = Float;
     fn eval_cell(&self, cell: &Cell) -> f32 {
         self.lhs.eval_cell(cell) * self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs * rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Mul(Mul { lhs, rhs })))
-        }
     }
 }
 
@@ -277,26 +181,14 @@ impl Mul {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Div {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Div {
     type Output = Float;
     fn eval_cell(&self, cell: &Cell) -> f32 {
         self.lhs.eval_cell(cell) / self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs / rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Div(Div { lhs, rhs })))
-        }
     }
 }
 
@@ -308,26 +200,14 @@ impl Div {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Add {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Add {
     type Output = Float;
     fn eval_cell(&self, cell: &Cell) -> f32 {
         self.lhs.eval_cell(cell) + self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs + rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Add(Add { lhs, rhs })))
-        }
     }
 }
 
@@ -339,26 +219,14 @@ impl Add {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sub {
-    lhs: Expr<Float>,
-    rhs: Expr<Float>,
+    pub lhs: Expr<Float>,
+    pub rhs: Expr<Float>,
 }
 
 impl Operator for Sub {
     type Output = Float;
     fn eval_cell(&self, cell: &Cell) -> f32 {
         self.lhs.eval_cell(cell) - self.rhs.eval_cell(cell)
-    }
-    fn eval_static(self) -> Expr<Self::Output>
-    where
-        Self: Sized,
-    {
-        let lhs = self.lhs.eval_static();
-        let rhs = self.rhs.eval_static();
-        if let (Some(lhs), Some(rhs)) = (lhs.as_imm(), rhs.as_imm()) {
-            Expr::Imm(lhs - rhs)
-        } else {
-            Expr::TypeOp(Box::new(Float::Sub(Sub { lhs, rhs })))
-        }
     }
 }
 
@@ -390,16 +258,6 @@ impl Type for Bool {
             Bool::Less(op) => op.eval_cell(cell),
         }
     }
-    fn eval_static(self) -> Expr<Self> {
-        match self {
-            Bool::Not(op) => op.eval_static(),
-            Bool::And(op) => op.eval_static(),
-            Bool::Xor(op) => op.eval_static(),
-            Bool::Or(op) => op.eval_static(),
-            Bool::Greater(op) => op.eval_static(),
-            Bool::Less(op) => op.eval_static(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -408,10 +266,7 @@ impl Type for Color {
     type Repr = Srgb<u8>;
     type Cond = Bool;
     fn eval_cell(&self, _cell: &Cell) -> Self::Repr {
-        unreachable!("Color does not have any operators");
-    }
-    fn eval_static(self) -> Expr<Self> {
-        unreachable!("Color does not have any operators");
+        match *self {}
     }
 }
 
@@ -435,16 +290,6 @@ impl Type for Float {
             Float::Div(op) => op.eval_cell(cell),
             Float::Add(op) => op.eval_cell(cell),
             Float::Sub(op) => op.eval_cell(cell),
-        }
-    }
-    fn eval_static(self) -> Expr<Self> {
-        match self {
-            Float::Variable(_) => Expr::TypeOp(Box::new(self.clone())),
-            Float::Neg(op) => op.eval_static(),
-            Float::Mul(op) => op.eval_static(),
-            Float::Div(op) => op.eval_static(),
-            Float::Add(op) => op.eval_static(),
-            Float::Sub(op) => op.eval_static(),
         }
     }
 }
