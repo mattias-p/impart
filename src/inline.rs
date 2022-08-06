@@ -100,14 +100,14 @@ where
                     if_false,
                 }))
             }
-            Expr::Ref(def) => {
+            Expr::Ref(let_in) => {
                 let tmp = RefCell::new(Expr::Imm(Default::default()));
-                def.inner.inner.swap(&tmp);
+                let_in.value.inner.swap(&tmp);
                 let expr = tmp.into_inner().inline();
-                def.inner.inner.replace(expr.clone());
-                match Rc::try_unwrap(def) {
-                    Ok(def) => def.inner.inner.into_inner(),
-                    Err(def) => Expr::Ref(def),
+                let_in.value.inner.replace(expr.clone());
+                match Rc::try_unwrap(let_in) {
+                    Ok(let_in) => let_in.value.inner.into_inner(),
+                    Err(let_in) => Expr::Ref(let_in),
                 }
             }
         }

@@ -4,9 +4,9 @@ use std::rc::Rc;
 use palette::rgb::channels::Argb;
 use palette::Srgb;
 
-use crate::expr::Def;
 use crate::expr::Expr;
 use crate::expr::IfThenElse;
+use crate::expr::LetIn;
 use crate::generate::VarId;
 use crate::generate::VarSpec;
 use crate::lexer::Loc;
@@ -69,14 +69,14 @@ impl<'a> SymTable<'a> {
 
     pub fn with_def(&'a self, sym: Loc<&'a str>, value: AnyExpr) -> SymTable<'a> {
         let expr = match value {
-            AnyExpr::Bool(expr) => AnyExpr::Bool(Expr::Ref(Rc::new(Def {
-                inner: sym.map(|_| RefCell::new(expr)),
+            AnyExpr::Bool(expr) => AnyExpr::Bool(Expr::Ref(Rc::new(LetIn {
+                value: sym.map(|_| RefCell::new(expr)),
             }))),
-            AnyExpr::Color(expr) => AnyExpr::Color(Expr::Ref(Rc::new(Def {
-                inner: sym.map(|_| RefCell::new(expr)),
+            AnyExpr::Color(expr) => AnyExpr::Color(Expr::Ref(Rc::new(LetIn {
+                value: sym.map(|_| RefCell::new(expr)),
             }))),
-            AnyExpr::Float(expr) => AnyExpr::Float(Expr::Ref(Rc::new(Def {
-                inner: sym.map(|_| RefCell::new(expr)),
+            AnyExpr::Float(expr) => AnyExpr::Float(Expr::Ref(Rc::new(LetIn {
+                value: sym.map(|_| RefCell::new(expr)),
             }))),
         };
         SymTable::Sym {
@@ -113,7 +113,7 @@ impl<'a> SymTable<'a> {
                 ))))
             }
             parser::Expr::Ident(s) => match self.symbol(s) {
-                Some(def) => Ok(def.inner.clone()),
+                Some(value) => Ok(value.inner.clone()),
                 None => Err(expr.error("use of undeclared identifier")),
             },
             parser::Expr::Constructor(inner) => match inner.kind {
@@ -189,8 +189,8 @@ impl<'a> SymTable<'a> {
                 }
             },
             parser::Expr::LetIn(inner) => {
-                let def = self.any_expr(&inner.definition)?;
-                self.with_def(inner.term, def).any_expr(&inner.expr)
+                let let_in = self.any_expr(&inner.definition)?;
+                self.with_def(inner.term, let_in).any_expr(&inner.expr)
             }
             parser::Expr::UnOp(inner) => match inner.op {
                 Op::Not => {
@@ -324,7 +324,7 @@ mod tests {
     fn let_in() {
         assert_eq!(
             check(b"let brown = #123456 in\nbrown"),
-            Ok(Expr::Ref(Rc::new(Def {
+            Ok(Expr::Ref(Rc::new(LetIn {
                 inner: Loc {
                     line: 1,
                     col: 5,
@@ -337,7 +337,7 @@ mod tests {
     fn let_in_let_in() {
         assert_eq!(
             check(b"let foo = #123456 in\nlet foo = #654321 in\nfoo"),
-            Ok(Expr::Ref(Rc::new(Def {
+            Ok(Expr::Ref(Rc::new(LetIn {
                 inner: Loc {
                     line: 2,
                     col: 5,

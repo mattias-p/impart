@@ -16,21 +16,21 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Def<Output>
+pub struct LetIn<Output>
 where
     Output: Type + Clone,
     <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
 {
-    pub inner: Loc<RefCell<Expr<Output>>>,
+    pub value: Loc<RefCell<Expr<Output>>>,
 }
 
-impl<Output> Def<Output>
+impl<Output> LetIn<Output>
 where
     Output: Type + Clone,
     <Output as Type>::Cond: Type<Repr = bool, Cond = <Output as Type>::Cond>,
 {
     pub fn eval_cell(&self, cell: &Cell) -> Output::Repr {
-        self.inner.inner.borrow().eval_cell(cell)
+        self.value.inner.borrow().eval_cell(cell)
     }
 }
 
@@ -43,7 +43,7 @@ where
     Imm(Output::Repr),
     TypeOp(Box<Output>),
     IfThenElse(Box<IfThenElse<Output>>),
-    Ref(Rc<Def<Output>>),
+    Ref(Rc<LetIn<Output>>),
 }
 
 impl<Output> Expr<Output>
@@ -64,16 +64,16 @@ where
             Expr::Imm(value) => *value,
             Expr::IfThenElse(if_then_else) => if_then_else.eval_cell(cell),
             Expr::TypeOp(op) => op.eval_cell(cell),
-            Expr::Ref(def) => def.eval_cell(cell),
+            Expr::Ref(let_in) => let_in.eval_cell(cell),
         }
     }
 
     pub fn error<S: AsRef<str>>(&self, message: S) -> String {
         let message = message.as_ref();
         match self {
-            Expr::Ref(def) => format!(
+            Expr::Ref(let_in) => format!(
                 "{message} (defined at {}:{})",
-                def.inner.line, def.inner.col
+                let_in.value.line, let_in.value.col
             ),
             _ => message.to_string(),
         }

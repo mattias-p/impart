@@ -199,11 +199,11 @@ where
                     }))
                 }
             }
-            Expr::Ref(ref def) => {
+            Expr::Ref(ref let_in) => {
                 let tmp = RefCell::new(Expr::Imm(Default::default()));
-                def.inner.inner.swap(&tmp);
+                let_in.value.inner.swap(&tmp);
                 let expr = tmp.into_inner().eval_static();
-                def.inner.inner.replace(expr.clone());
+                let_in.value.inner.replace(expr.clone());
                 if expr.as_imm().is_some() {
                     expr
                 } else {
