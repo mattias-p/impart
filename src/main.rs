@@ -12,7 +12,6 @@ mod typeck;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Read;
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -33,10 +32,6 @@ struct Cli {
     #[clap(short, long, default_value = "out.png")]
     outfile: PathBuf,
 
-    /// Source file
-    #[clap(short = 'c', long)]
-    sourcefile: Option<PathBuf>,
-
     /// Width in modules (x-coordinates)
     #[clap(short, long, default_value_t = 256)]
     width: u16,
@@ -49,38 +44,26 @@ struct Cli {
     #[clap(short, long, default_value_t = 0)]
     seed: u32,
 
-    /// Dump the source
-    #[clap(long, action)]
-    dump_source: bool,
-
     /// Dump some statistics
     #[clap(long, action)]
     dump_stats: bool,
+
+    /// Script file
+    script: PathBuf,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let mut buffer = Vec::new();
-    let source = if let Some(ref sourcefile) = cli.sourcefile {
-        let mut f = File::open(sourcefile).context("Failed to open source file")?;
-        f.read_to_end(&mut buffer)
-            .context("Failed to read source file")?;
-        buffer.as_slice()
-    } else {
-        include_bytes!("../examples/08-perlin.sbf")
-    };
-    if cli.dump_source {
-        std::io::stdout()
-            .write(source)
-            .context("Failed to write to stdout")?;
-        return Ok(());
-    }
+    let mut source = Vec::new();
+    let mut f = File::open(cli.script).context("Failed to open script file")?;
+    f.read_to_end(&mut source)
+        .context("Failed to read script file")?;
 
     let file = File::create(&cli.outfile).context("Failed to open out file")?;
     let w = &mut BufWriter::new(file);
 
-    let (prog, var_specs) = typeck::parse_source(source)
+    let (prog, var_specs) = typeck::parse_source(&source)
         .map_err(anyhow::Error::msg)
         .context("Failed to parse source")?;
     let prog = prog.eval_static();
