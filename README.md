@@ -17,6 +17,11 @@ It also alludes to how a structure of domains is imparted to the image.
 These are just a bunch of ideas for possible paths forward, categorized by area.
 
 
+### Documentation
+* Add section about usage.
+* Add section about installation.
+
+
 ### Scripts
 * Implement the Whittaker biome classification without butchering it entirely.
 * Add some nuances to the three major biome classes of the alttp example.
