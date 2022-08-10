@@ -20,6 +20,8 @@ These are just a bunch of ideas for possible paths forward, categorized by area.
 ### Documentation
 * Add section about usage.
 * Add section about installation.
+* Describe how this tool is constructed.
+  * Adapt the structure and naming of the components to match the documentation.
 
 
 ### Scripts
