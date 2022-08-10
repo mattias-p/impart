@@ -22,12 +22,36 @@ These are just a bunch of ideas for possible paths forward, categorized by area.
 ### Language
 * Make Perlin debias configurable from scripts.
 * Make the variable seed offset configurable from scripts.
-* Add a Perlin water variable
+* Add a Perlin water variable.
+* Add random constant variable? (Usecases for this?)
+* Closures and lists?
+  * min() and max()
+* Records and modules?
+* Sum-types and pattern matching?
 
 
 ### Compiler
+* Pretty printer.
+  * Make lexer tokens for whitespace and comments.
+  * Make AST track whitespace and comments.
+  * Nice-looking serializer for AST.
+* Make AST the sole tree representation.
+  * Support inline comments.
+  * Make AST nodes house a generic payload element.
+  * Make typechecker and optimization passes return ASTs.
+  * Make optimized nodes track their original sub-ASTs.
+  * Serialize optimized nodes with their original ASTs commented out.
+* Memoize reference evaluation
+  * Today we're threading a cell through the runtime evaluation.
+    * Refactor it into a more general context.
+  * Replace LetIn refcounting with evaluation state in a symbol table in the
+    context.
+* Stack machine
+
 
 ### Tool
+* Make CLI take script file a positional argument instead of a named one.
+
 
 ### Algorithms
 
