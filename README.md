@@ -22,23 +22,67 @@ These are just a bunch of ideas for possible paths forward, categorized by area.
 ### Language
 * Make Perlin debias configurable from scripts.
 * Make the variable seed offset configurable from scripts.
+* Add a Perlin water variable
 
 
 ### Algorithms
 
-#### Procedure: ascending-neighbour (alt. descending-neighbour)
+#### Procedure: local-maximum (alt. local-minimum)
 
 Finding a local maximum (or minimum) of a gradient noise function could be done
-by picking a starting point and finding the highest (lowest) one of its
-neighbours, and iterate until none of the neighbours are higer (or lower) than
-the current cell.
+by picking a starting point and iterating ascending-neighbour (alt. descending
+neighbour) until it returns nothing.
 
-In theory multiple cells could be the highest ones for a given step.
-A reasonable set of simple tie breakers would be:
-1. Pick the cell that is furthest from the center of the board (or closest to it
-   when descending).
-2. Pick the cell that is furthest to the north (or south when descending).
-3. Pick the cell that is furthest to the eastt (or west when descending).
+
+#### Procedure: ascending-neighbour (alt. descending neighbour)
+
+##### Inputs
+* A cell (G).
+* A noise function.
+
+##### Output
+* A cell or nothing. Nothing means that the cell is a local maximum (alt.
+  minimum).
+
+##### Procedure
+1. Construct an empty set (O).
+2. Construct an empty set (C).
+3. Construct an empty set (H).
+4. Set number (E) to the level of G.
+5. Add the given cell to O.
+6. While O is non-empty:
+   1. Remove a cell (M) from O.
+   2. Add M to C.
+   3. For each neighbour (N) of M:
+      1. If it is preesnt in O or C, skip it.
+      2. If N is at the exact same level as G, add it to O.
+      3. If the level of N is equal to E, add N to H.
+      4. If the level of N is higher than E, clear H and add N to it.
+5. If H is empty, return nothing.
+6. For each cell (N) in H:
+   1. If it is closer to the center of the board than any other cell in H,
+      remove it from the set.
+7. For each cell (N) in H:
+   1. If it is further to the south than any other cell in H, remove it from the
+      set.
+8. For each cell (N) in H:
+   1. If it is further to the west than any other cell in H, remove it from the
+      set.
+9. Assertion: H contains exactly one cell.
+10. Return the single cell of H.
+
+##### Notes
+* The procedure described here makes sure to be deterministic.
+  This is important.
+* The procedure described here may return a cell that is not adjacent to the
+  given cell.
+  This may be problematic.
+
+
+#### Perlin water variable
+
+1. Pick a random cell.
+2. Calculate its local-maximum.
 
 
 ### Compiler
