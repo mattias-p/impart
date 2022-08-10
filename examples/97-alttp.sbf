@@ -6,8 +6,8 @@ let bias_e_y = 0.6 in
 let bias_p_e = 0.9 in
 
 let y_raw = Y {} in
-let e_raw = Perlin { octaves: 6; frequency: 1.0; persistence: 0.33} in
-let p_raw = Perlin { octaves: 6; frequency: 0.75; persistence: 0.33} in
+let e_raw = Perlin { octaves: 6; frequency: 1.0; persistence: 0.33 } in
+let p_raw = Perlin { octaves: 6; frequency: 0.75; persistence: 0.33 } in
 
 let e = (e_raw+1) * (1-bias_e_y) + bias_e_y * (1+y_raw) - 1 in
 let e_point_1 = 0.50 in
