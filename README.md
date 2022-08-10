@@ -1,4 +1,4 @@
-# Biogen
+# Impart
 
 This is a kind of sandbox to play around with rule based partitioning a
 rectangle based on Perlin noise.
@@ -7,6 +7,10 @@ The rules need to be expressed somehow and the simplest things I could think of
 was a very simple programming language with arithmetic and conditionals and not
 much else.
 Definitions were added to support bigger programs and aid maintenance of them.
+
+The name is short for image partition.
+It also alludes to how a structure of domains is imparted to the image.
+
 
 ## Roadmap
 
