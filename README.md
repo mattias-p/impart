@@ -25,6 +25,10 @@ These are just a bunch of ideas for possible paths forward, categorized by area.
 * Add a Perlin water variable
 
 
+### Compiler
+
+### Tool
+
 ### Algorithms
 
 #### Procedure: local-maximum (alt. local-minimum)
@@ -41,50 +45,49 @@ neighbour) until it returns nothing.
 * A noise function.
 
 ##### Output
-* A cell or nothing. Nothing means that the cell is a local maximum (alt.
+* A cell or nothing. Nothing means that the cell is at a local maximum (alt.
   minimum).
 
 ##### Procedure
-1. Construct an empty set (O).
-2. Construct an empty set (C).
-3. Construct an empty set (H).
-4. Set number (E) to the level of G.
-5. Add the given cell to O.
-6. While O is non-empty:
-   1. Remove a cell (M) from O.
-   2. Add M to C.
-   3. For each neighbour (N) of M:
-      1. If it is preesnt in O or C, skip it.
-      2. If N is at the exact same level as G, add it to O.
-      3. If the level of N is equal to E, add N to H.
-      4. If the level of N is higher than E, clear H and add N to it.
-5. If H is empty, return nothing.
-6. For each cell (N) in H:
-   1. If it is closer to the center of the board than any other cell in H,
-      remove it from the set.
-7. For each cell (N) in H:
-   1. If it is further to the south than any other cell in H, remove it from the
-      set.
-8. For each cell (N) in H:
-   1. If it is further to the west than any other cell in H, remove it from the
-      set.
-9. Assertion: H contains exactly one cell.
-10. Return the single cell of H.
+ 1. Construct an empty set (O).
+ 2. Construct an empty set (C).
+ 3. Construct an empty set (H).
+ 4. Add the given cell to O.
+ 5. While O is non-empty:
+    1. Remove a cell (M) from O.
+    2. Add M to C.
+    3. For each neighbour (N) of M:
+       1. If N is a member of either O or C, skip it.
+       2. If N is at the exact same level as G, add it to O.
+       3. If N is higher than G, add it to H.
+ 6. If H is empty, return nothing.
+ 7. If H contains at least one cell that is adjacent to G:
+    1. Remove all cells from H that are not adjacent to G.
+ 8. If H does not contain any cells that are adjacent to G:
+    1. For each cell (N) in H:
+       1. If it is further from G than any other cell in H,
+          remove it from the set.
+ 9. For each cell (N) in H:
+    1. If it is lower than any other cell in H,
+       remove it from the set.
+10. For each cell (N) in H:
+    1. If it is closer to the center of the board than any other cell in H,
+       remove it from the set.
+11. For each cell (N) in H:
+    1. If it is further to the south than any other cell in H, remove it from the
+       set.
+12. For each cell (N) in H:
+    1. If it is further to the west than any other cell in H, remove it from the
+       set.
+14. Assertion: H contains exactly one cell.
+15. Return the single cell of H.
 
 ##### Notes
-* The procedure described here makes sure to be deterministic.
-  This is important.
 * The procedure described here may return a cell that is not adjacent to the
   given cell.
-  This may be problematic.
-
-
-#### Perlin water variable
-
-1. Pick a random cell.
-2. Calculate its local-maximum.
-
-
-### Compiler
-
-### Tool
+  There are pathological cases where a strangely shaped plateau could cause this
+  algorithm to return a cell with no simple path across the plateau to the given
+  value.
+* The procedure described here makes sure to be deterministic.
+  This is important.
+  Its behavior should even be stable across different versions of the software.
